@@ -1,255 +1,334 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import sqlite3
 
-# إعدادات الصفحة العامة للبرنامج
-st.set_page_config(page_title="منظومة إدارة مصنع الخزانات الاحترافية", layout="wide", initial_sidebar_state="expanded")
+# ==========================================
+# 1. تأسيس وإدارة قاعدة البيانات (SQLite)
+# ==========================================
+def init_db():
+    conn = sqlite3.connect("subul_alriyada_db.sqlite", check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # جدول الطلبيات والمعايير القياسية (BOM)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY, client_name TEXT, tank_type TEXT, qty INTEGER,
+            resin_exp REAL, mat_exp REAL, roving_exp REAL, tissue_exp REAL, catalyst_exp REAL, calcium_exp REAL, silica_exp REAL
+        )""")
+    
+    # جدول المخازن والمواد الخام
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            material_name TEXT PRIMARY KEY, quantity REAL
+        )""")
+    
+    # جدول التصنيع الفعلي والمقارنة
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS production (
+            serial_number TEXT PRIMARY KEY, order_id TEXT, tank_type TEXT,
+            resin_act REAL, mat_act REAL, roving_act REAL, tissue_act REAL, catalyst_act REAL, calcium_act REAL, silica_act REAL,
+            prod_date TEXT, supervisor TEXT
+        )""")
+    
+    # جدول الموردين والمشتريات
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS procurement (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, supplier_name TEXT, material_name TEXT, quantity REAL, unit_price REAL, total_price REAL, date TEXT
+        )""")
+    
+    # جدول رواتب العمالة
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hr_salaries (
+            emp_name TEXT PRIMARY KEY, base_salary REAL, paid REAL, remaining REAL
+        )""")
+    
+    # جدول المصاريف التشغيلية العمومية
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT, expense_type TEXT, amount REAL, date TEXT
+        )""")
+    
+    # تغذية المخزن بالمواد الأساسية برصيد صفر إذا كانت جديدة
+    cursor.execute("SELECT COUNT(*) FROM inventory")
+    if cursor.fetchone()[0] == 0:
+        materials = [("Resin", 0.0), ("Mat 450", 0.0), ("Roving 600", 0.0), ("Tissue", 0.0), ("Catalyst", 0.0), ("Calcium Carbonate", 0.0), ("Silica", 0.0)]
+        cursor.executemany("INSERT INTO inventory VALUES (?, ?)", materials)
+        
+    conn.commit()
+    return conn
 
-# تطبيق تصفيف CSS لدعم اللغة العربية والاتجاه من اليمين لليسار
+# تشغيل قاعدة البيانات
+db_conn = init_db()
+
+# ==========================================
+# 2. الهوية البصرية وإعدادات النظام
+# ==========================================
+st.set_page_config(page_title="مصنع سُبُل الريادة - ERP", layout="wide")
+
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     html, body, [data-testid="stSidebar"], .stApp {
-        font-family: 'Cairo', sans-serif;
-        direction: RTL;
-        text-align: right;
+        font-family: 'Cairo', sans-serif; direction: RTL; text-align: right;
     }
-    .stMetric {
-        text-align: center;
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #dee2e6;
-    }
+    .main-header { font-size: 32px; color: #1E3A8A; font-weight: bold; border-bottom: 3px solid #FBBF24; padding-bottom: 5px; }
+    .designer-tag { font-size: 14px; color: #64748B; background: #F1F5F9; padding: 5px 15px; border-radius: 20px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# الثوابت المالية للمشروع
-سعر_البيع = 4000
-تكلفة_الخزان = 2705
-نسبة_المقدم = 0.15
+st.markdown(f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:20px;">'
+            f'<div class="main-header">🏭 نظام إدارة مصنع سُبُل الريادة الاحترافي</div>'
+            f'<div class="designer-tag">تصميم المهندس محمد سلامة</div>'
+            f'</div>', unsafe_allow_html=True)
 
-# تهيئة قاعدة البيانات المؤقتة في ذاكرة النظام (Session State)
-if 'inventory' not in st.session_state:
-    st.session_state.inventory = {"راتنج (طن)": 50.0, "فايبر (طن)": 20.0, "مصلد (كجم)": 500.0}
-if 'production_log' not in st.session_state:
-    st.session_state.production_log = []
-if 'invoices' not in st.session_state:
-    st.session_state.invoices = []
-if 'supplier_balance' not in st.session_state:
-    st.session_state.supplier_balance = 0.0
-
-# القائمة الجانبية للتنقل بين أقسام البرنامج
-st.sidebar.title("🛠️ لوحة التحكم والمراقبة")
-st.sidebar.write("---")
-القسم = st.sidebar.radio("انتقل إلى القسم:", [
-    "📊 لوحة التحكم العامة (Dashboard)",
-    "🏭 خط الإنتاج وتوليد الـ QR",
-    "🧾 المبيعات وفواتير العملاء",
-    "📦 المخازن وحسابات الموردين"
+# القائمة الجانبية والصلاحيات
+st.sidebar.title("🛠️ الأقسام والعمليات")
+menu = st.sidebar.radio("انتقل إلى:", [
+    "📊 لوحة التحكم والميزانية", "📦 فتح طلبية جديدة (BOM)", "🏭 قائمة التصنيع والمقارنة",
+    "📥 المشتريات والمخزن", "💰 الفواتير والعملاء", "👷 رواتب العمال والمصاريف"
 ])
 
 # ==========================================
-# 1. قسم لوحة التحكم العامة
+# 3. الأقسام التشغيلية والبرمجية
 # ==========================================
-if القسم == "📊 لوحة التحكم العامة (Dashboard)":
-    st.title("📊 منظومة إدارة مشروع الـ 1,000 خزان")
-    st.subheader("نظرة عامة على الأداء المالي والتشغيلي لحظة بلحظة")
-    
-    # حساب الإحصائيات
-    إجمالي_المنتج = len(st.session_state.production_log)
-    إجمالي_المبيعات = sum([inv['الصافي'] for inv in st.session_state.invoices])
-    الكاش_المحصل = sum([inv['الصافي'] for inv in st.session_state.invoices if inv['الحالة'] == "تم التحصيل"])
-    الكاش_المتأخر = إجمالي_المبيعات - الكاش_المحصل
-    
-    # عرض العدادات الرئيسية
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(label="إجمالي الإنتاج الفعلي", value=f"{إجمالي_المنتج} خزان")
-    with col2:
-        st.metric(label="إجمالي قيمة الفواتير", value=f"{إجمالي_المبيعات:,.2f} ريال")
-    with col3:
-        st.metric(label="الكاش الداخل للخزنة", value=f"{الكاش_المحصل:,.2f} ريال")
-    with col4:
-        st.metric(label="مستحقات متأخرة بالسوق", value=f"{الكاش_المتأخر:,.2f} ريال")
-        
-    st.write("---")
-    st.subheader("📈 أحدث حركات الإنتاج بالمصنع")
-    if st.session_state.production_log:
-        df_prod = pd.DataFrame(st.session_state.production_log)
-        st.dataframe(df_prod[["المسلسل", "التاريخ", "النوع", "المشرف"]], use_container_width=True)
-    else:
-        st.warning("لا توجد حركات إنتاج مسجلة اليوم.")
 
-# ==========================================
-# 2. قسم خط الإنتاج وتوليد الـ QR
-# ==========================================
-elif القسم == "🏭 خط الإنتاج وتوليد الـ QR":
-    st.title("🏭 قسم مراقبة الجودة والإنتاج اللحظي")
-    st.subheader("تسجيل الخزانات الجاهزة وتوليد الباركود تلقائياً")
-    
-    with st.form("production_form"):
-        مشرف_الوردية = st.text_input("اسم مهندس / مشرف الوردية:")
-        كمية_الإنتاج = st.number_input("عدد الخزانات الجاهزة للفحص الفني:", min_value=1, max_value=8, value=4)
-        نوع_الخزان = st.selectbox("مواصفة المنتج:", ["خزان GRP - سعة 8,000 لتر دفن", "خزان GRP - سعة 8,000 لتر سطحي"])
-        submit = st.form_submit_button("اعتماد الإنتاج وطباعة الـ QR")
+# القسم 1: فتح طلبية جديدة وتحديد BOM
+if menu == "📦 فتح طلبية جديدة (BOM)":
+    st.subheader("📦 إدارة الطلبيات وتحديد المعايير القياسية للمنتج")
+    with st.form("order_form"):
+        col1, col2 = st.columns(2)
+        o_id = col1.text_input("رقم / كود الطلبية الفريد (مثال: ORD-101):")
+        c_name = col2.text_input("اسم العمـيل:")
+        t_type = col1.selectbox("نوع الخزان ومواصفاته:", ["خزان دفن 8,000 لتر", "خزان سطحي 5,000 لتر", "مواصفة مخصصة"])
+        o_qty = col2.number_input("إجمالي عدد الخزانات المطلوبة في الطلبية:", min_value=1, value=100)
         
-        if submit and مشرف_الوردية:
-            # معادلة خصم الخامات (افتراضية لكل خزان: 0.25 طن راتنج، 0.1 طن فايبر، 3 كجم مصلد)
-            راتنج_مطلوب = كمية_الإنتاج * 0.25
-            فايبر_مطلوب = كمية_الإنتاج * 0.1
-            مصلد_مطلوب = كمية_الإنتاج * 3.0
-            
-            if st.session_state.inventory["راتنج (طن)"] >= راتنج_مطلوب and st.session_state.inventory["فايبر (طن)"] >= فايبر_مطلوب:
-                # خصم المواد الخام من المخزن
-                st.session_state.inventory["راتنج (طن)"] -= راتنج_مطلوب
-                st.session_state.inventory["فايبر (طن)"] -= فايبر_مطلوب
-                st.session_state.inventory["مصلد (كجم)"] -= مصلد_مطلوب
-                
-                # توليد الخزانات والأكواد
-                for _ in range(كمية_الإنتاج):
-                    مسلسل_فريد = f"TANK-8K-{datetime.datetime.now().strftime('%Y%m%d')}-{len(st.session_state.production_log) + 1:04d}"
-                    st.session_state.production_log.append({
-                        "المسلسل": مسلسل_فريد,
-                        "التاريخ": str(datetime.date.today()),
-                        "النوع": نوع_الخزان,
-                        "المشرف": مشرف_الوردية
-                    })
-                st.success(f"✅ تم تسجيل {كمية_الإنتاج} خزانات بنجاح! وتحديث المخازن تلقائياً.")
-            else:
-                st.error("🚨 رصيد المواد الخام في المخزن لا يكفي لتصنيع هذه الكمية!")
-
-    # عرض الخزانات المنتجة وروابط الـ QR الخاصة بها
-    if st.session_state.production_log:
         st.write("---")
-        st.subheader("🖨️ الأكواد الجاهزة للطباعة واللصق على الخزانات:")
-        cols = st.columns(3)
-        for idx, item in enumerate(st.session_state.production_log[-8:]): # عرض آخر 8 خزانات فقط
-            with cols[idx % 3]:
-                st.info(f"كود: {item['المسلسل']}")
-                # توليد كود QR عبر رابط خارجي آمن وسريع لعرض البيانات عند الفحص
-                qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item['المسلسل']}-{item['النوع']}"
-                st.image(qr_url, caption="امسح الباركود للتحقق من الجودة والشحن")
-
-# ==========================================
-# 3. قسم المبيعات وفواتير العملاء
-# ==========================================
-elif القسم == "🧾 المبيعات وفواتير العملاء":
-    st.title("🧾 نظام الفواتير الذكي وتدفقات الكاش")
-    st.subheader("توليد فواتير الشحن مع الخصم التلقائي للمقدم (15%)")
-    
-    col_inv1, col_inv2 = st.columns([1, 2])
-    
-    with col_inv1:
-        st.subheader("إصدار فاتورة شحنة جديدة")
-        اسم_العميل = st.text_input("اسم العميل / شركة المقاولات:", value="شركة المقاولات الرئيسية")
-        الكمية_المشحونة = st.number_input("عدد الخزانات المشحونة في هذه الدفعة:", min_value=1, max_value=50, value=8)
-        حالة_التحصيل = st.selectbox("حالة السداد الفوري للفاتورة:", ["لم يتم", "تم التحصيل"])
-        توليد_فاتورة = st.button("إصدار الفاتورة المعتمدة")
+        st.markdown("**📋 كميات المواد الخام المتوقعة والمعيارية لتصنيع (خزان واحد فقط):**")
+        c3, c4, c5 = st.columns(3)
+        r_ex = c3.number_input("Resin (كيلو جرام):", min_value=0.0)
+        m_ex = c4.number_input("Mat 450 (كيلو جرام):", min_value=0.0)
+        v_ex = c5.number_input("Roving 600 (كيلو جرام):", min_value=0.0)
+        t_ex = c3.number_input("Tissue (متر مربع):", min_value=0.0)
+        ca_ex = c4.number_input("Catalyst (كيلو جرام):", min_value=0.0)
+        cc_ex = c5.number_input("كربونات الكالسيوم (كيلو جرام):", min_value=0.0)
+        s_ex = c3.number_input("Silica (كيلو جرام):", min_value=0.0)
         
-        if توليد_فاتورة:
-            الإجمالي = الكمية_المشحونة * سعر_البيع
-            الخصم = الإجمالي * نسبة_المقدم
-            الصافي = الإجمالي - الخصم
-            
-            st.session_state.invoices.append({
-                "رقم_الفاتورة": len(st.session_state.invoices) + 101,
-                "العميل": اسم_العميل,
-                "الكمية": الكمية_المشحونة,
-                "الإجمالي": الإجمالي,
-                "الخصم_15": الخصم,
-                "الصافي": الصافي,
-                "التاريخ": str(datetime.date.today()),
-                "تاريخ_الاستحقاق": str(datetime.date.today() + datetime.timedelta(days=10)),
-                "الحالة": حالة_التحصيل
-            })
-            st.success("تم إصدار الفاتورة وتحديث كشف حساب العميل.")
-
-    with col_inv2:
-        st.subheader("📂 أرشيف الفواتير ومتابعة التحصيل (10 أيام)")
-        if st.session_state.invoices:
-            df_inv = pd.DataFrame(st.session_state.invoices)
-            st.dataframe(df_inv[["رقم_الفاتورة", "العميل", "الكمية", "الصافي", "تاريخ_الاستحقاق", "الحالة"]], use_container_width=True)
-            
-            # اختيار فاتورة معينة لعرضها بشكل احترافي للطباعة
-            فاتورة_المعاينة = st.selectbox("اختر رقم الفاتورة لعرضها بنظام اللوجو والطباعة:", df_inv["رقم_الفاتورة"].tolist())
-            
-            if فاتورة_المعاينة:
-                selected_inv = [i for i in st.session_state.invoices if i["رقم_الفاتورة"] == فاتورة_المعاينة][0]
-                
-                st.write("---")
-                # قالب الفاتورة الإحترافي HTML المصمم للطباعة مباشرة
-                invoice_template = f"""
-                <div style="border: 2px solid #333; padding: 20px; border-radius: 10px; background-color: #fff; color: #000; direction: rtl; text-align: right;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td><h2>شركة مصنع الخزانات الوطنية</h2><p>الرياض - المملكة العربية السعودية</p></td>
-                            <td style="text-align: left;"><h1>فاتورة ضريبية</h1><p>رقم الفاتورة: #{selected_inv['رقم_الفاتورة']}</p><p>التاريخ: {selected_inv['التاريخ']}</p></td>
-                        </tr>
-                    </table>
-                    <hr style="border: 1px solid #333;">
-                    <p><strong>موجّه إلى السادة:</strong> {selected_inv['العميل']}</p>
-                    <table style="width: 100%; border: 1px solid #333; border-collapse: collapse; text-align: center;">
-                        <tr style="background-color: #f2f2f2;">
-                            <th style="border: 1px solid #333; padding: 8px;">البيان</th>
-                            <th style="border: 1px solid #333; padding: 8px;">الكمية</th>
-                            <th style="border: 1px solid #333; padding: 8px;">سعر الوحدة</th>
-                            <th style="border: 1px solid #333; padding: 8px;">الإجمالي</th>
-                        </tr>
-                        <tr>
-                            <td style="border: 1px solid #333; padding: 8px;">خزانات فيبرجلاس GRP سعة 8,000 لتر بمواصفات هندسية معتمدة</td>
-                            <td style="border: 1px solid #333; padding: 8px;">{selected_inv['الكمية']}</td>
-                            <td style="border: 1px solid #333; padding: 8px;">4,000 ريال</td>
-                            <td style="border: 1px solid #333; padding: 8px;">{selected_inv['الإجمالي']:,.2f} ريال</td>
-                        </tr>
-                    </table>
-                    <br>
-                    <table style="width: 40%; float: left; text-align: right; font-weight: bold;">
-                        <tr><td>الإجمالي قبل الخصم:</td><td>{selected_inv['الإجمالي']:,.2f} ريال</td></tr>
-                        <tr><td style="color: red;">خصم الدفعة المقدمة (15%):</td><td style="color: red;">-{selected_inv['الخصم_15']:,.2f} ريال</td></tr>
-                        <tr style="border-top: 2px solid #000; font-size: 18px;"><td>الصافي المطلوب كاش:</td><td>{selected_inv['الصافي']:,.2f} ريال</td></tr>
-                    </table>
-                    <div style="clear: both;"></div>
-                    <br>
-                    <p style="font-size: 12px; text-align: center; color: #555;">تاريخ استحقاق السداد كحد أقصى بموجب العقد: {selected_inv['تاريخ_الاستحقاق']}</p>
-                </div>
-                """
-                st.markdown(invoice_template, unsafe_allow_html=True)
-                st.write("💡 نصيحة: يمكنك الضغط على (Ctrl + P) لحفظ الفاتورة كـ PDF وطباعتها بلوجو الشركة.")
-        else:
-            st.info("لا توجد فواتير صادرة حتى الآن.")
-
-# ==========================================
-# 4. قسم المخازن وحسابات الموردين
-# ==========================================
-elif القسم == "📦 المخازن وحسابات الموردين":
-    st.title("📦 إدارة المستودعات وحسابات الموردين")
-    st.subheader("مراقبة أرصدة الخامات وتحديث الفواتير الآجلة")
-    
-    col_mat1, col_mat2 = st.columns(2)
-    
-    with col_mat1:
-        st.subheader("📊 أرصدة الخامات الحالية بالمستودع")
-        for key, val in st.session_state.inventory.items():
-            if val < 5.0 and "طن" in key:
-                st.error(f"⚠️ {key}: {val} (المخزون حرج! بحاجة لإعادة طلب)")
+        if st.form_submit_button("حفظ الطلبية وتوليد الأرقام المسلسلة آلياً"):
+            if o_id and c_name:
+                try:
+                    cursor = db_conn.cursor()
+                    cursor.execute("INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
+                                   (o_id, c_name, t_type, o_qty, r_ex, m_ex, v_ex, t_ex, ca_ex, cc_ex, s_ex))
+                    db_conn.commit()
+                    st.success(f"✅ تم اعتماد الطلبية وتوليد أرقام مسلسلة للمنتجات من: {o_id}-001 إلى {o_id}-{o_qty:03d}")
+                except sqlite3.IntegrityError:
+                    st.error("🚨 رقم هذه الطلبية مسجل مسبقاً في قاعدة البيانات!")
             else:
-                st.success(f"✅ {key}: {val}")
-                
-    with col_mat2:
-        st.subheader("🚚 توريد مواد خام جديدة (آجل / كاش)")
-        المورد = st.text_input("اسم شركة التوريد:")
-        قيمة_الفاتورة = st.number_input("إجمالي قيمة فاتورة الشراء (ريال):", min_value=0.0, value=50000.0)
-        نوع_السداد = st.selectbox("طريقة الدفع للمورد:", ["كاش فوراً", "آجل / على الحساب"])
-        تحديث_المخزن = st.button("تأكيد دخول الشحنة للمخزن")
+                st.warning("الرجاء ملء حقول اسم العميل ورقم الطلبية.")
+
+# القسم 2: قائمة التصنيع والمقارنة الفورية
+elif menu == "🏭 قائمة التصنيع والمقارنة":
+    st.subheader("🏭 قائمة التصنيع اليومي ومراقبة الهدر")
+    
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT order_id FROM orders")
+    all_orders = [row[0] for row in cursor.fetchall()]
+    
+    if not all_orders:
+        st.info("لا توجد طلبيات مسجلة حالياً لتصنيعها. ارجع لقسم الطلبيات.")
+    else:
+        chosen_order = st.selectbox("اختر رقم الطلبية الجاري تصنيعها:", all_orders)
+        cursor.execute("SELECT * FROM orders WHERE order_id=?", (chosen_order,))
+        order_data = cursor.fetchone()
         
-        if تحديث_المخزن and المورد:
-            if نوع_السداد == "آجل / على الحساب":
-                st.session_state.supplier_balance += قيمة_الفاتورة
-                st.success(f"تم تسجيل الفاتورة في حساب الآجل للمورد. إجمالي مستحقات الموردين الحالية: {st.session_state.supplier_balance:,.2f} ريال")
-            else:
-                st.success(f"تم تسجيل المدفوعات النقديّة للمورد بنجاح!")
+        st.info(f"العميل: {order_data[1]} | مواصفة الخزان: {order_data[2]} | الكمية المستهدفة: {order_data[3]} خزان")
+        
+        with st.form("prod_form"):
+            col_sn1, col_sn2 = st.columns(2)
+            sn_input = col_sn1.text_input("أدخل الرقم المسلسل الدقيق للخزان (مثال: ORD-101-001):")
+            supervisor = col_sn2.text_input("اسم مراقب الجودة / الفني المسؤول:")
             
-            # زيادة افتراضية للمخزن لتجربة البرنامج
-            st.session_state.inventory["راتنج (طن)"] += 10.0
-            st.session_state.inventory["فايبر (طن)"] += 5.0
+            st.write("---")
+            st.markdown("**⚖️ الأرقام الحقيقية والفعلية المستخدمة في تصنيع هذا الخزان:**")
+            c_a1, c_a2, c_a3 = st.columns(3)
+            r_ac = c_a1.number_input("Resin الفعلي (كيلو جرام):")
+            m_ac = c_a2.number_input("Mat 450 الفعلي (كيلو جرام):")
+            v_ac = c_a3.number_input("Roving 600 الفعلي (كيلو جرام):")
+            t_ac = c_a1.number_input("Tissue الفعلي (متر مربع):")
+            ca_ac = c_a2.number_input("Catalyst الفعلي (كيلو جرام):")
+            cc_ac = c_a3.number_input("كربونات الكالسيوم الفعلي (كيلو جرام):")
+            s_ac = c_a1.number_input("Silica الفعلي (كيلو جرام):")
+            
+            if st.form_submit_button("اعتماد مطابقة الخزان وخصم المخازن"):
+                if sn_input:
+                    # خصم الكميات آلياً من جدول المخزن
+                    for mat_name, act_val in [("Resin", r_ac), ("Mat 450", m_ac), ("Roving 600", v_ac), ("Tissue", t_ac), ("Catalyst", ca_ac), ("Calcium Carbonate", cc_ac), ("Silica", s_ac)]:
+                        cursor.execute("UPDATE inventory SET quantity = quantity - ? WHERE material_name = ?", (act_val, mat_name))
+                    
+                    # حفظ حركة الإنتاج الفعلي
+                    cursor.execute("INSERT INTO production VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                                   (sn_input, chosen_order, order_data[2], r_ac, m_ac, v_ac, t_ac, ca_ac, cc_ac, s_ac, str(datetime.date.today()), supervisor))
+                    db_conn.commit()
+                    st.success(f"✅ تم حفظ بيانات الخزان {sn_input} وتحديث المستودع فورا!")
+                    
+                    # جدول مقارنة فوري بين المتوقع والفعلي
+                    st.write("### 📊 جدول مقارنة الانحراف والخامات للخزان الحركي:")
+                    labels = ["Resin", "Mat 450", "Roving 600", "Tissue", "Catalyst"]
+                    exp_vals = [order_data[4], order_data[5], order_data[6], order_data[7], order_data[8]]
+                    act_vals = [r_ac, m_ac, v_ac, t_ac, ca_ac]
+                    diffs = [a - e for a, e in zip(act_vals, exp_vals)]
+                    
+                    comp_df = pd.DataFrame({"المادة الخام": labels, "الكمية المتوقعة (BOM)": exp_vals, "الكمية الفعلية المستهلكة": act_vals, "الانحراف / الهدر": diffs})
+                    st.table(comp_df)
+
+# القسم 3: المشتريات والمخزن وعمليات التوريد
+elif menu == "📥 المشتريات والمخزن":
+    st.subheader("📥 إدارة فواتير التوريد وحسابات المخازن الحالية")
+    t1, t2 = st.tabs(["🚚 تسجيل توريد خامات جديدة", "📦 جرد المخزن اللحظي"])
+    
+    cursor = db_conn.cursor()
+    with t1:
+        with st.form("proc_form"):
+            supp = st.text_input("اسم مورد المواد الخام:")
+            mat_select = st.selectbox("المادة الموردة:", ["Resin", "Mat 450", "Roving 600", "Tissue", "Catalyst", "Calcium Carbonate", "Silica"])
+            weight = st.number_input("الكمية المستلمة (بالكيلو جرام أو المتر المربع):", min_value=0.0)
+            u_p = st.number_input("سعر الوحدة / الكيلو جرام (ريال):", min_value=0.0)
+            
+            if st.form_submit_button("اعتماد الفاتورة وإدخال الخامات للمستودع"):
+                if supp and weight > 0:
+                    tot_price = weight * u_p
+                    cursor.execute("INSERT INTO procurement (supplier_name, material_name, quantity, unit_price, total_price, date) VALUES (?,?,?,?,?,?)",
+                                   (supp, mat_select, weight, u_p, tot_price, str(datetime.date.today())))
+                    cursor.execute("UPDATE inventory SET quantity = quantity + ? WHERE material_name = ?", (weight, mat_select))
+                    db_conn.commit()
+                    st.success(f"✅ تم إدخال الخامات بنجاح وقيد مديونية بقيمة {tot_price:,.2f} ريال للمورد {supp}")
+                    
+    with t2:
+        cursor.execute("SELECT * FROM inventory")
+        inv_data = cursor.fetchall()
+        df_inv = pd.DataFrame(inv_data, columns=["المادة الخام", "الرصيد المتاح الحالي بالمستودع"])
+        st.dataframe(df_inv, use_container_width=True)
+
+# القسم 4: الفواتير ونظام حسابات العملاء
+elif menu == "💰 الفواتير والعملاء":
+    st.subheader("💰 نظام الفواتير المعتمد والحسابات المالية للعملاء")
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT order_id FROM orders")
+    all_orders = [row[0] for row in cursor.fetchall()]
+    
+    if all_orders:
+        selected_o = st.selectbox("اصدار فاتورة أو مراجعة حساب لطلبية رقم:", all_orders)
+        cursor.execute("SELECT * FROM orders WHERE order_id=?", (selected_o,))
+        o_data = cursor.fetchone()
+        
+        col_f1, col_f2 = st.columns(2)
+        sell_p = col_f1.number_input("سعر بيع الخزان الواحد المتفق عليه (بدون ضريبة):", min_value=0.0, value=4000.0)
+        inv_mode = col_f2.selectbox("نوع الفاتورة والائتمان:", ["نقدي فوراً", "آجل - 10 أيام", "آجل - 30 يوماً", "آجل - 60 يوماً"])
+        advance_paid = col_f1.number_input("الدفعة المقدمة المستلمة من هذه الطلبية (ريال):", min_value=0.0)
+        
+        cursor.execute("SELECT COUNT(*) FROM production WHERE order_id=?", (selected_o,))
+        done_tanks = cursor.fetchone()[0]
+        
+        st.write("---")
+        st.subheader("📄 معاينة الفاتورة الرسمية الجاهزة للطباعة:")
+        
+        subtotal = done_tanks * sell_p
+        vat = subtotal * 0.15
+        grand_total = subtotal + vat
+        remaining_balance = grand_total - advance_paid
+        
+        invoice_html = f"""
+        <div style="border: 3px double #1E3A8A; padding: 25px; border-radius: 5px; background-color: #fff; color: #000; direction: rtl;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h1 style="color: #1E3A8A; margin:0;">مصنع سُبُل الريادة للخزانات والمواد الصناعية</h1>
+                <p style="font-size: 14px; margin:5px 0;">السجل التجاري | الرياض - المملكة العربية السعودية</p>
+                <h3 style="background-color: #F1F5F9; padding: 5px; margin-top:10px;">فاتورة توريد ونقليات</h3>
+            </div>
+            <table style="width: 100%; margin-bottom: 20px; font-size:15px;">
+                <tr><td><strong>السادة عملاء:</strong> {o_data[1]}</td><td><strong>رقم الطلبية المرجعي:</strong> {selected_o}</td></tr>
+                <tr><td><strong>نوع الفاتورة:</strong> {inv_mode}</td><td><strong>التاريخ:</strong> {str(datetime.date.today())}</td></tr>
+            </table>
+            <table style="width: 100%; border-collapse: collapse; text-align: center; font-size:15px;" border="1">
+                <tr style="background-color: #1E3A8A; color: white;"><th>وصف المنتج والبيان</th><th>الخزانات المنفذة</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>
+                <tr><td>{o_data[2]} بمواصفات هندسية دقيقة</td><td>{done_tanks} خزان</td><td>{sell_p:,.2f} ريال</td><td>{subtotal:,.2f} ريال</td></tr>
+            </table>
+            <div style="float: left; width: 40%; margin-top: 15px; font-size:14px; font-weight:bold;">
+                <p>المجموع الخاضع للضريبة: {subtotal:,.2f} ريال</p>
+                <p>ضريبة القيمة المضافة (15%): {vat:,.2f} ريال</p>
+                <p style="border-top:1px solid #000;">الإجمالي الكلي شامل الضريبة: {grand_total:,.2f} ريال</p>
+                <p style="color: green;">الدفعة المقدمة المخصومة: -{advance_paid:,.2f} ريال</p>
+                <p style="color: red; border-top: 2px solid #1E3A8A; font-size:16px;">الصافي المتبقي في مديونية العميل: {remaining_balance:,.2f} ريال</p>
+            </div>
+            <div style="clear:both;"></div>
+            <hr style="margin-top:20px;">
+            <p style="text-align: center; font-size: 11px; color:#555;">صُمم خصيصاً لمصنع سبل الريادة بواسطة المهندس محمد سلامة</p>
+        </div>
+        """
+        st.markdown(invoice_html, unsafe_allow_html=True)
+
+# القسم 5: رواتب العمال والمصاريف التشغيلية
+elif menu == "👷 رواتب العمال والمصاريف":
+    st.subheader("👷 كشوفات رواتب القوى العاملة والمصاريف التشغيلية الموزعة")
+    cursor = db_conn.cursor()
+    
+    sec1, sec2 = st.columns(2)
+    with sec1:
+        st.write("#### 💵 شاشة صرف الرواتب والسلف")
+        e_name = st.text_input("اسم الفني / العامل بالمصنع:")
+        b_sal = st.number_input("الراتب المستحق شامل الحوافز (ريال):", min_value=0.0)
+        p_sal = st.number_input("المبلغ المدفوع كاش الآن (ريال):", min_value=0.0)
+        
+        if st.button("اعتماد مستند الصرف وطباعة السند"):
+            if e_name:
+                r_sal = b_sal - p_sal
+                cursor.execute("INSERT OR REPLACE INTO hr_salaries VALUES (?,?,?,?)", (e_name, b_sal, p_sal, r_sal))
+                db_conn.commit()
+                st.success(f"تم حفظ البيانات. المتبقي في ذمة المصنع للعامل {e_name} هو {r_sal:,.2f} ريال")
+                
+    with sec2:
+        st.write("#### ⚡ تسجيل المصاريف العمومية للطلبيات")
+        cursor.execute("SELECT order_id FROM orders")
+        orders_exp = [r[0] for r in cursor.fetchall()]
+        
+        if orders_exp:
+            exp_order = st.selectbox("ربط المصروف بالطلبية رقم:", orders_exp)
+            exp_type = st.selectbox("بند المصروفات:", ["فاتورة كهرباء المصنع", "فاتورة المياه", "إيجار المنشأة شهريا", "تكاليف نقليات وشحن"])
+            exp_amt = st.number_input("المبلغ المدفوع للمصروف (ريال):", min_value=0.0)
+            
+            if st.button("قيد المصروف وحساب التكلفة"):
+                cursor.execute("INSERT INTO expenses (order_id, expense_type, amount, date) VALUES (?,?,?,?)",
+                               (exp_order, exp_type, exp_amt, str(datetime.date.today())))
+                db_conn.commit()
+                st.success(f"تم تسجيل بند {exp_type} للطلبية بنجاح.")
+
+# القسم 6: لوحة التحكم والميزانية والتقارير العامة
+elif menu == "📊 لوحة التحكم والميزانية":
+    st.subheader("📈 التحليلات المالية والميزانية العمومية والربحية للمصنع")
+    cursor = db_conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM production")
+    total_built = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT SUM(total_price) FROM procurement")
+    raw_m_costs = cursor.fetchone()[0] or 0.0
+    
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    total_ops_exp = cursor.fetchone()[0] or 0.0
+    
+    cursor.execute("SELECT SUM(paid) FROM hr_salaries")
+    total_hr_paid = cursor.fetchone()[0] or 0.0
+    
+    # حساب إجمالي المصاريف الموزعة
+    إجمالي_المصروفات_الكلية = raw_m_costs + total_ops_exp + total_hr_paid
+    
+    c_m1, c_m2, c_m3 = st.columns(3)
+    c_m1.metric("إجمالي الخزانات المنتجة بالمصنع", f"{total_built} خزان")
+    c_m2.metric("إجمالي التكاليف والمصاريف والرواتب تشغيلياً", f"{إجمالي_المصروفات_الكلية:,.2f} ريال")
+    
+    if total_built > 0:
+        cost_per_tank_calc = إجمالي_المصروفات_الكلية / total_built
+        c_m3.metric("التكلفة الحقيقية الموزعة للخزان الواحد حالياً", f"{cost_per_tank_calc:,.2f} ريال")
+        st.info("💡 النظام يحسب التكلفة أعلاه بدقة عبر جمع (قيمة الخامات المستخدمة + الفواتير العمومية + رواتب العمال) وقسمتها على الإنتاج الفعلي الكلي.")
+    else:
+        c_m3.metric("التكلفة الحقيقية الموزعة للخزان الواحد حالياً", "0.00 ريال")
