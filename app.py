@@ -7,6 +7,15 @@ import datetime
 import random
 
 # ==========================================
+import streamlit as st
+# ضع هذه الأسطر في أول ملفك الأصلي تماماً تحت الـ import
+total_order_val = 0.0
+net_advance = 0.0
+import pandas as pd
+import datetime
+import random
+
+# ==========================================
 # 1. الاتصال الآمن والذكي بقاعدة البيانات السحابية الخارجية
 # ==========================================
 # يستخدم هذا الخيار نظام Secrets الخاص بـ Streamlit للاتصال الآمن بالسيرفر الخارجي المجاني لـ PostgreSQL
@@ -14,6 +23,30 @@ try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
     st.error("🚨 يرجى ضبط معلومات الاتصال السحابي في ملف secrets.toml أولاً لقراءة قاعدة البيانات الدائمة.")
+
+# مصفوفة الأصناف المحدثة والمطابقة للمخزن والصناعة بمصنع سبل الريادة
+raw_materials_list = [
+    "راتنج كميائي صنف اول للديزل", 
+    "راتنج كميائي صنف ٢ للصرف الصحي", 
+    "ألياف (Mat 450)", 
+    "روفرز (Roving 600)", 
+    "تيسو (Tissue)", 
+    "مصلد (Catalyst)", 
+    "كربونات الكالسيوم", 
+    "سيليكا (Silica)"
+]
+
+# ==========================================
+# 2. الهوية البصرية وتنسيق الواجهة المريح
+# ==========================================
+st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v4.5", layout="wide")
+
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+    html, body, [data-testid="stSidebar"], .stApp {
+        font-family: 'Cairo', sans-serif; direction: RTL; text-align: right;
+    }
 
 # مصفوفة الأصناف المحدثة والمطابقة للمخزن والصناعة بمصنع سبل الريادة
 raw_materials_list = [
