@@ -2,25 +2,23 @@ import streamlit as st
 import pandas as pd
 import datetime
 import random
+import io
 from sqlalchemy import text
 
 # ==========================================
-# 1. الاتصال الآمن بقاعدة البيانات السحابية Neon
+# 1. الاتصال بقاعدة البيانات
 # ==========================================
 try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
-    st.error(f"🚨 خطأ في الاتصال بقاعدة البيانات: {e}")
+    st.error(f"🚨 خطأ في الاتصال: {e}")
     st.stop()
 
-# ==========================================
-# 2. دالة تنفيذ الاستعلامات
-# ==========================================
 def run_query(query, params=None):
     try:
         return conn.query(query, params=params, ttl=0)
     except Exception as e:
-        st.error(f"خطأ في الاستعلام: {e}")
+        st.error(f"خطأ: {e}")
         return pd.DataFrame()
 
 def run_write(query, params=None):
@@ -30,12 +28,17 @@ def run_write(query, params=None):
             session.commit()
         return True
     except Exception as e:
-        st.error(f"خطأ في الكتابة: {e}")
+        st.error(f"خطأ: {e}")
         return False
 
 # ==========================================
-# 3. قائمة المواد الخام
+# 2. بيانات المصنع
 # ==========================================
+FACTORY_NAME = "شركة مصنع سُبُل الريادة"
+FACTORY_ADDRESS = "الرياض - مدينة الخرج"
+FACTORY_CR = "—"
+FACTORY_TAX = "—"
+
 raw_materials_list = [
     "راتنج كميائي صنف اول للديزل",
     "راتنج كميائي صنف ٢ للصرف الصحي",
@@ -48,616 +51,772 @@ raw_materials_list = [
 ]
 
 # ==========================================
-# 4. الهوية البصرية
+# 3. الهوية البصرية
 # ==========================================
-st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v5.0", layout="wide")
-
+st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v6.0", layout="wide")
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    html, body, [data-testid="stSidebar"], .stApp {
-        font-family: 'Cairo', sans-serif; direction: RTL; text-align: right;
-    }
-    .main-header { font-size: 30px; color: #1E3A8A; font-weight: bold; border-bottom: 3px solid #FBBF24; padding-bottom: 5px; }
-    .designer-tag { font-size: 13px; color: #64748B; background: #F1F5F9; padding: 5px 15px; border-radius: 20px; }
-    .printable-sheet { border: 2px dashed #64748B; padding: 20px; background-color: #FAFAFA; border-radius: 5px; }
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+html, body, [data-testid="stSidebar"], .stApp { font-family: 'Cairo', sans-serif; direction: RTL; text-align: right; }
+.main-header { font-size: 28px; color: #1E3A8A; font-weight: bold; border-bottom: 3px solid #FBBF24; padding-bottom: 5px; }
+.designer-tag { font-size: 12px; color: #64748B; background: #F1F5F9; padding: 4px 12px; border-radius: 20px; }
+.print-card { border: 1.5px solid #CBD5E1; padding: 20px; background: #fff; border-radius: 8px; margin: 10px 0; }
+.alert-red { background:#EF4444; color:white; padding:12px; text-align:center; border-radius:5px; font-weight:bold; margin-bottom:15px; }
+</style>
 """, unsafe_allow_html=True)
 
 st.markdown(
-    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">'
-    f'<div class="main-header">🏭 نظام إدارة مصنع سُبُل الريادة - الإصدار السحابي v5.0</div>'
+    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">'
+    f'<div class="main-header">🏭 {FACTORY_NAME} — نظام ERP v6.0</div>'
     f'<div class="designer-tag">تصميم المهندس محمد سلامة</div>'
     f'</div>', unsafe_allow_html=True
 )
 
-# تحذير المخزون
 if st.session_state.get('global_stock_alert'):
-    st.markdown('<div style="background:#EF4444;color:white;padding:15px;text-align:center;border-radius:5px;font-weight:bold;font-size:18px;margin-bottom:20px;">🚨 تحذير: المخزون لا يكفي! الرجاء شراء المواد الخام.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="alert-red">🚨 تحذير: المخزون لا يكفي! يرجى شراء المواد الخام فوراً.</div>', unsafe_allow_html=True)
 
-# القائمة الجانبية
-st.sidebar.title("🛠️ العمليات والأقسام")
-menu = st.sidebar.radio("انتقل إلى القسم:", [
-    "📊 لوحة التحكم والميزانية",
-    "📦 فتح وإدارة الطلبيات",
-    "🏭 قائمة التصنيع والمقارنة",
+# ==========================================
+# 4. القائمة الجانبية
+# ==========================================
+st.sidebar.title("🛠️ الأقسام والعمليات")
+menu = st.sidebar.radio("انتقل إلى:", [
+    "📊 لوحة التحكم",
+    "📦 الطلبيات",
+    "🏭 التصنيع",
     "📥 المشتريات والمخزن",
-    "💰 الشحن والفواتير والحسابات",
-    "👷 قسم العمال والأجور",
-    "🔍 مركز الاستعلام المتقدم"
+    "💰 الشحن والفواتير",
+    "👷 العمال والأجور",
+    "🔍 الاستعلام المتقدم",
+    "🗑️ حذف كامل للبيانات"
 ])
+
+# ==========================================
+# دالة مساعدة: تحويل DataFrame لـ CSV
+# ==========================================
+def df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8-sig')
+
+def print_header():
+    return f"""
+    <div style="text-align:center; border-bottom:2px solid #1E3A8A; padding-bottom:10px; margin-bottom:15px;">
+        <h2 style="color:#1E3A8A; margin:0;">{FACTORY_NAME}</h2>
+        <p style="margin:2px 0; color:#555;">{FACTORY_ADDRESS}</p>
+        <p style="margin:2px 0; color:#555; font-size:13px;">س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p>
+    </div>
+    """
 
 # ==========================================
 # [قسم 1]: لوحة التحكم
 # ==========================================
-if menu == "📊 لوحة التحكم والميزانية":
-    st.subheader("📈 التحليلات والتقارير المالية")
-
-    col1, col2 = st.columns(2)
-    d_start = col1.date_input("من تاريخ:", datetime.date.today() - datetime.timedelta(days=30))
-    d_end = col2.date_input("إلى تاريخ:", datetime.date.today())
-
+if menu == "📊 لوحة التحكم":
+    st.subheader("📈 لوحة التحكم والتقارير المالية")
+    c1, c2 = st.columns(2)
+    d_start = c1.date_input("من:", datetime.date.today() - datetime.timedelta(days=30))
+    d_end = c2.date_input("إلى:", datetime.date.today())
     st.markdown("---")
 
-    # إجمالي المبيعات من فواتير المبيعات
-    sales_df = run_query("SELECT COALESCE(SUM(grand_total),0) as total FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e", {"s": d_start, "e": d_end})
-    total_sales = float(sales_df['total'].iloc[0]) if not sales_df.empty else 0.0
-
-    # إجمالي المشتريات
-    proc_df = run_query("SELECT COALESCE(SUM(total_price),0) as total FROM procurement WHERE date BETWEEN :s AND :e", {"s": d_start, "e": d_end})
-    total_procurement = float(proc_df['total'].iloc[0]) if not proc_df.empty else 0.0
-
-    # إجمالي الرواتب
-    sal_df = run_query("SELECT COALESCE(SUM(net_paid),0) as total FROM worker_salaries WHERE payout_date BETWEEN :s AND :e", {"s": d_start, "e": d_end})
-    total_salaries = float(sal_df['total'].iloc[0]) if not sal_df.empty else 0.0
-
-    # إجمالي المصاريف
-    exp_df = run_query("SELECT COALESCE(SUM(amount),0) as total FROM general_expenses WHERE date BETWEEN :s AND :e", {"s": d_start, "e": d_end})
-    total_expenses = float(exp_df['total'].iloc[0]) if not exp_df.empty else 0.0
-
-    total_costs = total_procurement + total_salaries + total_expenses
+    total_sales = float(run_query("SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e", {"s":d_start,"e":d_end})['t'].iloc[0])
+    total_proc = float(run_query("SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e", {"s":d_start,"e":d_end})['t'].iloc[0])
+    total_sal = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e", {"s":d_start,"e":d_end})['t'].iloc[0])
+    total_exp = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e", {"s":d_start,"e":d_end})['t'].iloc[0])
+    total_costs = total_proc + total_sal + total_exp
     net_profit = total_sales - total_costs
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("إجمالي المبيعات (ريال)", f"{total_sales:,.2f}")
-    c2.metric("إجمالي التكاليف (ريال)", f"{total_costs:,.2f}")
-    c3.metric("صافي الربح (ريال)", f"{net_profit:,.2f}", delta="ربح" if net_profit >= 0 else "خسارة")
+    m1,m2,m3,m4 = st.columns(4)
+    m1.metric("إجمالي المبيعات", f"{total_sales:,.2f} ر")
+    m2.metric("إجمالي المشتريات", f"{total_proc:,.2f} ر")
+    m3.metric("الرواتب والمصاريف", f"{total_sal+total_exp:,.2f} ر")
+    m4.metric("صافي الربح/الخسارة", f"{net_profit:,.2f} ر", delta="ربح" if net_profit>=0 else "خسارة")
 
     st.markdown("---")
-    st.write("### 📦 الطلبيات النشطة حالياً")
-    active_orders = run_query("SELECT order_id, status, qty, total_price FROM orders WHERE status = 'قيد التنفيذ'")
-    if not active_orders.empty:
-        st.dataframe(active_orders, use_container_width=True)
-    else:
-        st.info("لا توجد طلبيات نشطة حالياً.")
+    st.write("### 📦 الطلبيات النشطة")
+    adf = run_query("SELECT o.order_id, c.trade_name as العميل, o.qty as الكمية, o.total_price as القيمة, o.status as الحالة FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
+    st.dataframe(adf if not adf.empty else pd.DataFrame({"الحالة":["لا توجد طلبيات نشطة"]}), use_container_width=True)
 
-    st.write("### 🏪 أرصدة المخزن الحالية")
-    inv_df = run_query("SELECT material_name, quantity FROM inventory ORDER BY material_name")
-    if not inv_df.empty:
-        st.dataframe(inv_df, use_container_width=True)
+    st.write("### 🏪 المخزن الحالي")
+    inv = run_query("SELECT material_name as المادة, quantity as الكمية FROM inventory ORDER BY material_name")
+    st.dataframe(inv if not inv.empty else pd.DataFrame(), use_container_width=True)
 
 # ==========================================
 # [قسم 2]: الطلبيات
 # ==========================================
-elif menu == "📦 فتح وإدارة الطلبيات":
-    st.subheader("📦 منظومة التحكم وحسابات الطلبيات")
-    t_new, t_edit, t_active = st.tabs(["➕ فتح طلبية جديدة", "📝 تعديل طلبية", "📋 الطلبيات الجارية"])
+elif menu == "📦 الطلبيات":
+    st.subheader("📦 منظومة الطلبيات")
+    tabs = st.tabs(["➕ طلبية جديدة", "📝 تعديل طلبية", "📋 الطلبيات الجارية", "💵 دفعات عميل", "🔍 استعلام عميل"])
 
-    with t_new:
-        st.write("#### ➕ تأسيس طلبية جديدة")
-        auto_order_code = f"SUBUL-ORD-{datetime.date.today().year}-{random.randint(1000,9999)}"
-        st.info(f"🤖 كود الطلبية المقترح: **{auto_order_code}**")
-        order_id_input = st.text_input("كود الطلبية (يمكن تعديله):", value=auto_order_code)
+    # ---- تبويب 1: طلبية جديدة ----
+    with tabs[0]:
+        if 'order_form_key' not in st.session_state:
+            st.session_state.order_form_key = 0
 
-        # إضافة عميل جديد
-        with st.expander("👤 تسجيل عميل جديد أولاً؟"):
-            cust_trade = st.text_input("اسم العميل التجاري:")
-            cust_cr = st.text_input("رقم السجل التجاري:")
-            cust_tax = st.text_input("الرقم الضريبي:")
-            if st.button("حفظ العميل"):
-                if cust_trade:
-                    ok = run_write("INSERT INTO customers (trade_name, cr_number, tax_number) VALUES (:t, :c, :tx) ON CONFLICT (trade_name) DO NOTHING", {"t": cust_trade, "c": cust_cr, "tx": cust_tax})
-                    if ok:
-                        st.success(f"✅ تم تسجيل العميل [{cust_trade}] بنجاح!")
+        with st.form(f"order_form_{st.session_state.order_form_key}", clear_on_submit=True):
+            st.write("#### ➕ فتح طلبية جديدة")
+            auto_code = f"SUBUL-ORD-{datetime.date.today().year}-{random.randint(1000,9999)}"
+            order_id_f = st.text_input("كود الطلبية:", value=auto_code)
 
-        # اختيار عميل
-        customers_df = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
-        if customers_df.empty:
-            st.warning("لا يوجد عملاء. أضف عميلاً أولاً.")
-        else:
-            cust_options = customers_df['trade_name'].tolist()
-            selected_customer = st.selectbox("اختر العميل:", cust_options)
-            customer_id = int(customers_df[customers_df['trade_name'] == selected_customer]['id'].iloc[0])
-
-            c1, c2, c3 = st.columns(3)
-            t_use = c1.selectbox("استخدام الخزان:", ["ماء", "صرف", "ديزل", "حريق"])
-            t_capacity = c2.text_input("سعة الخزان:")
-            t_type = c3.selectbox("نوع الخزان:", ["دفّان", "فوق الأرض"])
-
-            c4, c5 = st.columns(2)
-            qty_input = c4.number_input("عدد الخزانات:", min_value=1, value=10)
-            unit_price_input = c5.number_input("سعر الخزان الواحد (ريال):", min_value=0.0, value=3500.0)
-
-            total_order_val = qty_input * unit_price_input
-            advance_mode = st.selectbox("طريقة المقدم:", ["مبلغ بالريال", "نسبة مئوية (%)"])
-            advance_value = st.number_input("قيمة المقدم:", min_value=0.0, value=0.0)
-
-            if advance_mode == "نسبة مئوية (%)":
-                net_advance = (total_order_val * advance_value) / 100
+            customers_df = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
+            if customers_df.empty:
+                st.warning("أضف عملاء أولاً من قسم الاستعلام.")
+                cust_sel = None
             else:
-                net_advance = advance_value
+                cust_sel = st.selectbox("العميل:", customers_df['trade_name'].tolist())
 
-            remaining_val = total_order_val - net_advance
+            c1,c2,c3 = st.columns(3)
+            t_use = c1.selectbox("استخدام الخزان:", ["ماء","صرف","ديزل","حريق"])
+            t_cap = c2.text_input("السعة (مثال: 10,000 لتر):")
+            t_typ = c3.selectbox("نوع التركيب:", ["دفّان","فوق الأرض"])
 
-            st.markdown(f"""
-            <div style="background:#F8FAFC;padding:15px;border-radius:5px;border-right:4px solid #1E3A8A;font-weight:bold;">
-            💰 إجمالي العقد: {total_order_val:,.2f} ريال | 🟢 المقدم: {net_advance:,.2f} ريال | 🔴 المتبقي: {remaining_val:,.2f} ريال
-            </div>
-            """, unsafe_allow_html=True)
+            c4,c5 = st.columns(2)
+            qty_f = c4.number_input("عدد الخزانات:", min_value=1, value=10)
+            uprice_f = c5.number_input("سعر الخزان الواحد (ريال):", min_value=0.0, value=3500.0)
+            total_val = qty_f * uprice_f
+
+            adv_mode = st.selectbox("طريقة المقدم:", ["مبلغ بالريال","نسبة مئوية (%)"])
+            adv_val = st.number_input("قيمة المقدم:", min_value=0.0, value=0.0)
+            net_adv = (total_val * adv_val / 100) if adv_mode == "نسبة مئوية (%)" else adv_val
+            remaining = total_val - net_adv
+
+            st.markdown(f"💰 **إجمالي العقد:** {total_val:,.2f} | 🟢 **المقدم:** {net_adv:,.2f} | 🔴 **المتبقي:** {remaining:,.2f}")
 
             st.write("---")
-            st.markdown("**📋 كميات المواد المعيارية لخزان واحد:**")
-            cx1, cx2, cx3 = st.columns(3)
-            r_ex = cx1.number_input("راتنج (كجم):", min_value=0.0, value=250.0)
-            m_ex = cx2.number_input("ألياف Mat (كجم):", min_value=0.0, value=80.0)
-            v_ex = cx3.number_input("روفرز (كجم):", min_value=0.0, value=40.0)
-            t_ex = cx1.number_input("تيسو (م²):", min_value=0.0, value=12.0)
-            ca_ex = cx2.number_input("مصلد (كجم):", min_value=0.0, value=4.0)
-            cc_ex = cx3.number_input("كالسيوم (كجم):", min_value=0.0, value=100.0)
-            s_ex = cx1.number_input("سيليكا (كجم):", min_value=0.0, value=8.0)
+            st.markdown("**كميات المواد المعيارية لخزان واحد:**")
+            x1,x2,x3 = st.columns(3)
+            r_ex = x1.number_input("راتنج (كجم):", min_value=0.0, value=250.0)
+            m_ex = x2.number_input("ألياف Mat (كجم):", min_value=0.0, value=80.0)
+            v_ex = x3.number_input("روفرز (كجم):", min_value=0.0, value=40.0)
+            t_ex = x1.number_input("تيسو (م²):", min_value=0.0, value=12.0)
+            ca_ex = x2.number_input("مصلد (كجم):", min_value=0.0, value=4.0)
+            cc_ex = x3.number_input("كالسيوم (كجم):", min_value=0.0, value=100.0)
+            s_ex = x1.number_input("سيليكا (كجم):", min_value=0.0, value=8.0)
 
-            # فحص المخزون الحقيقي
-            inv_df = run_query("SELECT material_name, quantity FROM inventory")
-            inv_dict = dict(zip(inv_df['material_name'], inv_df['quantity'])) if not inv_df.empty else {}
+            st.markdown(f"""
+            **📊 إجمالي المواد للطلبية كاملة ({qty_f} خزان):**
+            راتنج: {r_ex*qty_f:.1f} كجم | ألياف: {m_ex*qty_f:.1f} كجم | روفرز: {v_ex*qty_f:.1f} كجم |
+            تيسو: {t_ex*qty_f:.1f} م² | مصلد: {ca_ex*qty_f:.1f} كجم | كالسيوم: {cc_ex*qty_f:.1f} كجم | سيليكا: {s_ex*qty_f:.1f} كجم
+            """)
 
-            resin_key = "راتنج كميائي صنف اول للديزل" if t_use == "ديزل" else "راتنج كميائي صنف ٢ للصرف الصحي"
-            available_resin = inv_dict.get(resin_key, 0)
-            required_resin = r_ex * qty_input
-
-            if required_resin > available_resin:
-                st.error(f"⚠️ نقص في الراتنج! المطلوب: {required_resin} كجم | المتاح: {available_resin} كجم | العجز: {required_resin - available_resin} كجم")
-                st.session_state['global_stock_alert'] = True
-
-            if st.button("🚀 اعتماد الطلبية وحفظها"):
+            submitted = st.form_submit_button("🚀 حفظ الطلبية")
+            if submitted and cust_sel:
+                cid = int(customers_df[customers_df['trade_name']==cust_sel]['id'].iloc[0])
                 ok = run_write("""
-                    INSERT INTO orders (order_id, customer_id, tank_use, tank_capacity, tank_type, qty, unit_price, total_price, advance_paid, remaining_balance, resin_exp, mat_exp, roving_exp, tissue_exp, catalyst_exp, calcium_exp, silica_exp)
-                    VALUES (:oid, :cid, :tu, :tc, :tt, :qty, :up, :tp, :ap, :rb, :re, :me, :ve, :te, :cae, :cce, :se)
-                """, {
-                    "oid": order_id_input, "cid": customer_id, "tu": t_use, "tc": t_capacity, "tt": t_type,
-                    "qty": qty_input, "up": unit_price_input, "tp": total_order_val, "ap": net_advance,
-                    "rb": remaining_val, "re": r_ex, "me": m_ex, "ve": v_ex, "te": t_ex,
-                    "cae": ca_ex, "cce": cc_ex, "se": s_ex
-                })
+                    INSERT INTO orders (order_id,customer_id,tank_use,tank_capacity,tank_type,qty,unit_price,total_price,advance_paid,remaining_balance,resin_exp,mat_exp,roving_exp,tissue_exp,catalyst_exp,calcium_exp,silica_exp)
+                    VALUES (:oid,:cid,:tu,:tc,:tt,:qty,:up,:tp,:ap,:rb,:re,:me,:ve,:te,:cae,:cce,:se)
+                """, {"oid":order_id_f,"cid":cid,"tu":t_use,"tc":t_cap,"tt":t_typ,"qty":qty_f,"up":uprice_f,
+                      "tp":total_val,"ap":net_adv,"rb":remaining,"re":r_ex,"me":m_ex,"ve":v_ex,
+                      "te":t_ex,"cae":ca_ex,"cce":cc_ex,"se":s_ex})
                 if ok:
-                    st.session_state['global_stock_alert'] = False
-                    st.success("✅ تم حفظ الطلبية بنجاح في قاعدة البيانات!")
+                    st.success("✅ تم حفظ الطلبية!")
+                    st.session_state.order_form_key += 1
                     st.rerun()
 
-    with t_edit:
-        st.write("#### 📝 تعديل طلبية قائمة")
-        orders_df = run_query("SELECT o.order_id, c.trade_name, o.qty, o.status FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.status = 'قيد التنفيذ'")
+    # ---- تبويب 2: تعديل طلبية ----
+    with tabs[1]:
+        orders_df = run_query("SELECT o.order_id, c.trade_name, o.qty, o.status FROM orders o JOIN customers c ON o.customer_id=c.id")
         if orders_df.empty:
-            st.info("لا توجد طلبيات للتعديل.")
+            st.info("لا توجد طلبيات.")
         else:
-            order_list = [f"{r['order_id']} | {r['trade_name']}" for _, r in orders_df.iterrows()]
-            selected_edit = st.selectbox("اختر الطلبية:", order_list)
-            selected_oid = selected_edit.split(" | ")[0]
-            new_status = st.selectbox("الحالة الجديدة:", ["قيد التنفيذ", "مكتملة", "ملغاة"])
+            sel = st.selectbox("اختر الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in orders_df.iterrows()])
+            oid = sel.split(" | ")[0]
+            new_status = st.selectbox("الحالة:", ["قيد التنفيذ","مكتملة","ملغاة"])
             if st.button("💾 حفظ التعديل"):
-                ok = run_write("UPDATE orders SET status = :s WHERE order_id = :oid", {"s": new_status, "oid": selected_oid})
-                if ok:
-                    st.success("✅ تم تحديث الطلبية بنجاح!")
+                if run_write("UPDATE orders SET status=:s WHERE order_id=:oid", {"s":new_status,"oid":oid}):
+                    st.success("✅ تم تحديث الطلبية!")
 
-    with t_active:
-        st.write("#### 📋 الطلبيات الجارية")
-        active_df = run_query("""
-            SELECT o.order_id, c.trade_name as العميل, o.tank_use as الاستخدام,
-                   o.qty as الكمية, o.total_price as القيمة, o.status as الحالة
-            FROM orders o JOIN customers c ON o.customer_id = c.id
-            WHERE o.status = 'قيد التنفيذ'
-        """)
-        if active_df.empty:
-            st.info("لا توجد طلبيات جارية.")
-        else:
-            st.dataframe(active_df, use_container_width=True)
+    # ---- تبويب 3: الطلبيات الجارية ----
+    with tabs[2]:
+        adf = run_query("""SELECT o.order_id as "رقم الطلبية", c.trade_name as "العميل", o.tank_use as "الاستخدام",
+            o.qty as "الكمية", o.total_price as "القيمة الإجمالية", o.advance_paid as "المقدم",
+            o.remaining_balance as "المتبقي", o.status as "الحالة", o.order_date as "التاريخ"
+            FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'""")
+        st.dataframe(adf if not adf.empty else pd.DataFrame({"الحالة":["لا توجد طلبيات جارية"]}), use_container_width=True)
+        if not adf.empty:
+            st.download_button("⬇️ تنزيل التقرير", df_to_csv(adf), "active_orders.csv", "text/csv")
+
+    # ---- تبويب 4: دفعات عميل ----
+    with tabs[3]:
+        st.write("#### 💵 تسجيل دفعة من عميل")
+        customers_df2 = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
+        if not customers_df2.empty:
+            sel_c = st.selectbox("اسم العميل:", customers_df2['trade_name'].tolist(), key="pay_cust")
+            cid2 = int(customers_df2[customers_df2['trade_name']==sel_c]['id'].iloc[0])
+            orders_df2 = run_query("SELECT order_id FROM orders WHERE customer_id=:cid AND status='قيد التنفيذ'", {"cid":cid2})
+            if not orders_df2.empty:
+                sel_ord = st.selectbox("رقم الطلبية:", orders_df2['order_id'].tolist(), key="pay_ord")
+                del_df = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid", {"oid":sel_ord})
+                del_opts = ["—"] + [str(x) for x in del_df['delivery_id'].tolist()] if not del_df.empty else ["—"]
+                sel_del = st.selectbox("رقم أمر التسليم (اختياري):", del_opts, key="pay_del")
+                pay_amt = st.number_input("مبلغ الدفعة (ريال):", min_value=0.0, value=0.0, key="pay_amt")
+                pay_type = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"], key="pay_type")
+                bank = st.text_input("اسم البنك (إن وجد):", key="pay_bank")
+                if st.button("💵 اعتماد الدفعة"):
+                    ok = run_write("INSERT INTO customer_payments (customer_id,order_id,amount,payment_type,bank_name) VALUES (:cid,:oid,:a,:pt,:b)",
+                                   {"cid":cid2,"oid":sel_ord,"a":pay_amt,"pt":pay_type,"b":bank})
+                    if ok:
+                        st.success(f"✅ تم تسجيل دفعة {pay_amt:,.2f} ريال!")
+            else:
+                st.info("لا توجد طلبيات جارية لهذا العميل.")
+
+    # ---- تبويب 5: استعلام عميل ----
+    with tabs[4]:
+        st.write("#### 🔍 كشف حساب عميل")
+        customers_df3 = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
+        if not customers_df3.empty:
+            sel_c3 = st.selectbox("اختر العميل:", customers_df3['trade_name'].tolist(), key="stmt_c")
+            cid3 = int(customers_df3[customers_df3['trade_name']==sel_c3]['id'].iloc[0])
+            d1,d2 = st.columns(2)
+            ds = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="stmt_ds")
+            de = d2.date_input("إلى:", datetime.date.today(), key="stmt_de")
+            if st.button("📊 عرض كشف الحساب"):
+                inv_df = run_query("""SELECT si.invoice_date as "التاريخ", si.invoice_id as "رقم الفاتورة",
+                    o.order_id as "الطلبية", si.grand_total as "إجمالي الفاتورة", si.net_required as "المستحق"
+                    FROM sales_invoices si JOIN orders o ON si.order_id=o.order_id
+                    WHERE o.customer_id=:cid AND si.invoice_date BETWEEN :s AND :e ORDER BY si.invoice_date""",
+                    {"cid":cid3,"s":ds,"e":de})
+                pay_df = run_query("""SELECT payment_date as "التاريخ", order_id as "الطلبية",
+                    amount as "المبلغ المدفوع", payment_type as "طريقة الدفع", bank_name as "البنك"
+                    FROM customer_payments WHERE customer_id=:cid AND payment_date BETWEEN :s AND :e ORDER BY payment_date""",
+                    {"cid":cid3,"s":ds,"e":de})
+                total_inv = float(inv_df['المستحق'].sum()) if not inv_df.empty else 0.0
+                total_paid = float(pay_df['المبلغ المدفوع'].sum()) if not pay_df.empty else 0.0
+                balance = total_inv - total_paid
+
+                st.markdown(f"""<div class="print-card">{print_header()}
+                <h3 style="text-align:center;">كشف حساب عميل: {sel_c3}</h3>
+                <p>الفترة: {ds} إلى {de}</p></div>""", unsafe_allow_html=True)
+                st.write("**الفواتير:**"); st.dataframe(inv_df if not inv_df.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True)
+                st.write("**المدفوعات:**"); st.dataframe(pay_df if not pay_df.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True)
+                m1,m2,m3 = st.columns(3)
+                m1.metric("إجمالي الفواتير", f"{total_inv:,.2f} ر")
+                m2.metric("إجمالي المدفوع", f"{total_paid:,.2f} ر")
+                m3.metric("الرصيد المستحق", f"{balance:,.2f} ر")
+                combined = pd.concat([inv_df, pay_df], ignore_index=True) if not inv_df.empty or not pay_df.empty else pd.DataFrame()
+                if not combined.empty:
+                    st.download_button("⬇️ تنزيل كشف الحساب", df_to_csv(combined), f"stmt_{sel_c3}.csv", "text/csv")
 
 # ==========================================
 # [قسم 3]: التصنيع
 # ==========================================
-elif menu == "🏭 قائمة التصنيع والمقارنة":
+elif menu == "🏭 التصنيع":
     st.subheader("🏭 إدارة صالة الإنتاج")
-
-    orders_df = run_query("""
-        SELECT o.order_id, c.trade_name, o.qty,
-               o.resin_exp, o.mat_exp, o.roving_exp, o.tissue_exp,
-               o.catalyst_exp, o.calcium_exp, o.silica_exp
-        FROM orders o JOIN customers c ON o.customer_id = c.id
-        WHERE o.status = 'قيد التنفيذ'
-    """)
-
+    orders_df = run_query("""SELECT o.order_id, c.trade_name, o.qty,
+        o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp
+        FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'""")
     if orders_df.empty:
-        st.info("لا توجد طلبيات جارية للتصنيع.")
-    else:
-        order_options = [f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان" for _, r in orders_df.iterrows()]
-        selected_prod = st.selectbox("اختر الطلبية:", order_options)
-        selected_oid = selected_prod.split(" | ")[0]
-        order_row = orders_df[orders_df['order_id'] == selected_oid].iloc[0]
+        st.info("لا توجد طلبيات جارية."); st.stop()
 
-        tanks_today = st.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2)
+    opts = [f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان" for _,r in orders_df.iterrows()]
+    sel = st.selectbox("اختر الطلبية:", opts)
+    oid = sel.split(" | ")[0]
+    row = orders_df[orders_df['order_id']==oid].iloc[0]
 
-        # حساب الصرف المعياري
-        calc_resin = tanks_today * float(order_row['resin_exp'] or 0)
-        calc_mat = tanks_today * float(order_row['mat_exp'] or 0)
-        calc_roving = tanks_today * float(order_row['roving_exp'] or 0)
-        calc_tissue = tanks_today * float(order_row['tissue_exp'] or 0)
-        calc_catalyst = tanks_today * float(order_row['catalyst_exp'] or 0)
-        calc_calcium = tanks_today * float(order_row['calcium_exp'] or 0)
-        calc_silica = tanks_today * float(order_row['silica_exp'] or 0)
+    tanks_today = st.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2)
 
-        st.markdown(f"""
-        <div class="printable-sheet">
-        <h4 style="text-align:center;color:#1E3A8A;">📋 مستند صرف مواد - {selected_oid}</h4>
-        <p>عدد الخزانات: {tanks_today} | التاريخ: {datetime.date.today()}</p>
-        <ul>
-            <li>راتنج: <b>{calc_resin} كجم</b></li>
-            <li>ألياف Mat: <b>{calc_mat} كجم</b></li>
-            <li>روفرز: <b>{calc_roving} كجم</b></li>
-            <li>تيسو: <b>{calc_tissue} م²</b></li>
-            <li>مصلد: <b>{calc_catalyst} كجم</b></li>
-            <li>كالسيوم: <b>{calc_calcium} كجم</b></li>
-            <li>سيليكا: <b>{calc_silica} كجم</b></li>
-        </ul>
-        </div>
-        """, unsafe_allow_html=True)
+    # حساب المواد
+    calc = {
+        "راتنج": tanks_today * float(row['resin_exp'] or 0),
+        "ألياف Mat": tanks_today * float(row['mat_exp'] or 0),
+        "روفرز": tanks_today * float(row['roving_exp'] or 0),
+        "تيسو": tanks_today * float(row['tissue_exp'] or 0),
+        "مصلد": tanks_today * float(row['catalyst_exp'] or 0),
+        "كالسيوم": tanks_today * float(row['calcium_exp'] or 0),
+        "سيليكا": tanks_today * float(row['silica_exp'] or 0),
+    }
 
-        if st.button("🎬 بدء وردية جديدة وخصم المواد من المخزن"):
-            # خصم المواد من المخزن
-            updates = [
-                ("راتنج كميائي صنف اول للديزل", calc_resin),
-                ("ألياف (Mat 450)", calc_mat),
-                ("روفرز (Roving 600)", calc_roving),
-                ("تيسو (Tissue)", calc_tissue),
-                ("مصلد (Catalyst)", calc_catalyst),
-                ("كربونات الكالسيوم", calc_calcium),
-                ("سيليكا (Silica)", calc_silica),
-            ]
-            for mat, qty in updates:
-                run_write("UPDATE inventory SET quantity = quantity - :q WHERE material_name = :m", {"q": qty, "m": mat})
+    dispatch_html = f"""
+    <div class="print-card" id="dispatch_doc" style="color:black;">
+    {print_header()}
+    <h3 style="text-align:center;color:black;">أمر صرف مواد خام من المخزن</h3>
+    <p style="color:black;"><b>الطلبية:</b> {oid} | <b>التاريخ:</b> {datetime.date.today()} | <b>عدد الخزانات:</b> {tanks_today}</p>
+    <table style="width:100%;border-collapse:collapse;color:black;" border="1">
+    <tr style="background:#1E3A8A;color:white;"><th>المادة</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr>
+    {"".join(f'<tr><td style="color:black;">{k}</td><td style="color:black;">{v:.2f}</td><td style="color:black;">كجم/م²</td></tr>' for k,v in calc.items())}
+    </table>
+    <p style="margin-top:20px;color:black;">توقيع أمين المخزن: ......................... | توقيع مدير الإنتاج: .........................</p>
+    </div>"""
+    st.markdown(dispatch_html, unsafe_allow_html=True)
 
-            # إنشاء سجل وردية
-            ok = run_write("INSERT INTO production_days (order_id, planned_qty, date) VALUES (:oid, :pq, :d)",
-                           {"oid": selected_oid, "pq": tanks_today, "d": datetime.date.today()})
-            if ok:
-                st.success("✅ تم فتح الوردية وخصم المواد من المخزن!")
+    dispatch_df = pd.DataFrame(list(calc.items()), columns=["المادة","الكمية"])
+    st.download_button("⬇️ تنزيل أمر الصرف", df_to_csv(dispatch_df), f"dispatch_{oid}_{datetime.date.today()}.csv", "text/csv")
 
-        st.write("---")
-        st.markdown("### 🔒 إنهاء الوردية وتسجيل الإنتاج الفعلي")
-        tanks_actual = st.number_input("عدد الخزانات المنفذة فعلياً:", min_value=0, value=tanks_today)
-        supervisor = st.text_input("اسم المشرف:")
+    if st.button("🎬 بدء الوردية وخصم المواد من المخزن"):
+        mat_keys = {
+            "راتنج كميائي صنف اول للديزل": calc["راتنج"],
+            "ألياف (Mat 450)": calc["ألياف Mat"],
+            "روفرز (Roving 600)": calc["روفرز"],
+            "تيسو (Tissue)": calc["تيسو"],
+            "مصلد (Catalyst)": calc["مصلد"],
+            "كربونات الكالسيوم": calc["كالسيوم"],
+            "سيليكا (Silica)": calc["سيليكا"],
+        }
+        for mat, qty in mat_keys.items():
+            run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":qty,"m":mat})
+        ok = run_write("INSERT INTO production_days (order_id,planned_qty,date) VALUES (:oid,:pq,:d)", {"oid":oid,"pq":tanks_today,"d":datetime.date.today()})
+        if ok:
+            st.success("✅ تم فتح الوردية وخصم المواد!")
 
-        if st.button("🔒 إنهاء الوردية وتسجيل الأرقام المسلسلة"):
-            # جيب آخر وردية
-            last_shift = run_query("SELECT id FROM production_days WHERE order_id = :oid ORDER BY id DESC LIMIT 1", {"oid": selected_oid})
-            if not last_shift.empty:
-                shift_id = int(last_shift['id'].iloc[0])
-                run_write("UPDATE production_days SET actual_qty = :aq, status = 'مغلق' WHERE id = :sid", {"aq": tanks_actual, "sid": shift_id})
+    st.write("---")
+    st.markdown("### 🔒 إنهاء الوردية")
+    actual_qty = st.number_input("العدد الفعلي المصنَّع:", min_value=0, value=int(tanks_today))
+    supervisor = st.text_input("اسم المشرف:")
 
-                for i in range(1, tanks_actual + 1):
-                    serial = f"SUBUL-SN-{datetime.date.today().year}-{random.randint(10000,99999)}-{i:02d}"
-                    run_write("""
-                        INSERT INTO production_tanks (serial_number, order_id, shift_id, prod_date, supervisor)
-                        VALUES (:sn, :oid, :sid, :pd, :sup)
-                    """, {"sn": serial, "oid": selected_oid, "sid": shift_id, "pd": datetime.date.today(), "sup": supervisor})
-                    st.markdown(f"✅ تم تسجيل الخزان: `{serial}`")
+    if st.button("🔒 إنهاء الوردية وتوليد الأرقام المسلسلة"):
+        last_shift = run_query("SELECT id FROM production_days WHERE order_id=:oid ORDER BY id DESC LIMIT 1", {"oid":oid})
+        if not last_shift.empty:
+            shift_id = int(last_shift['id'].iloc[0])
+            run_write("UPDATE production_days SET actual_qty=:aq,status='مغلق' WHERE id=:sid", {"aq":actual_qty,"sid":shift_id})
 
-                st.success(f"🏁 تم إغلاق الوردية وتسجيل {tanks_actual} خزان بنجاح!")
+            serials = []
+            for i in range(1, actual_qty+1):
+                sn = f"SUBUL-SN-{datetime.date.today().year}-{random.randint(10000,99999)}-{i:02d}"
+                run_write("INSERT INTO production_tanks (serial_number,order_id,shift_id,prod_date,supervisor) VALUES (:sn,:oid,:sid,:pd,:sup)",
+                          {"sn":sn,"oid":oid,"sid":shift_id,"pd":datetime.date.today(),"sup":supervisor})
+                serials.append(sn)
+                st.markdown(f"🔹 خزان {i}: `{sn}`")
+
+            st.success(f"✅ تم إغلاق الوردية وتسجيل {actual_qty} خزان!")
+
+            # مقارنة المواد
+            st.write("### 📊 تقرير المقارنة")
+            planned_total = {k: tanks_today * v for k, v in [
+                ("راتنج", float(row['resin_exp'] or 0)),
+                ("ألياف Mat", float(row['mat_exp'] or 0)),
+                ("روفرز", float(row['roving_exp'] or 0)),
+            ]}
+            actual_resin = actual_qty * float(row['resin_exp'] or 0)
+            dev = actual_resin - calc["راتنج"]
+
+            if dev > 0:
+                st.warning(f"⚠️ زيادة استهلاك راتنج: {dev:.2f} كجم — سيتم خصمها من المخزن.")
+                run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name='راتنج كميائي صنف اول للديزل'", {"q":dev})
+            elif dev < 0:
+                st.success(f"🟢 وفر في الراتنج: {abs(dev):.2f} كجم — تمت إضافتها للمخزن.")
+                run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name='راتنج كميائي صنف اول للديزل'", {"q":abs(dev)})
 
 # ==========================================
 # [قسم 4]: المشتريات والمخزن
 # ==========================================
 elif menu == "📥 المشتريات والمخزن":
-    st.subheader("📥 إدارة المشتريات والمخزن")
-    t_supp, t_buy, t_adj, t_stock = st.tabs(["🤝 مورد جديد", "🚚 فاتورة توريد", "🔧 ضبط الأرصدة", "📊 رصيد المخزن"])
+    st.subheader("📥 المشتريات والمخزن")
+    tabs = st.tabs(["🤝 مورد جديد", "🚚 فاتورة توريد", "💳 دفعات مورد", "🔍 كشف حساب مورد", "🔧 ضبط المخزن", "📊 رصيد المخزن"])
 
-    with t_supp:
-        st.write("#### 🤝 تسجيل مورد جديد")
-        with st.form("supplier_form", clear_on_submit=True):
+    # ---- تبويب 1: مورد جديد ----
+    with tabs[0]:
+        with st.form("sup_form", clear_on_submit=True):
             s_orig = st.text_input("اسم المورد الأصلي:")
             s_trade = st.text_input("الاسم التجاري:")
             s_cr = st.text_input("رقم السجل التجاري:")
             if st.form_submit_button("حفظ المورد"):
                 if s_orig:
-                    ok = run_write("INSERT INTO suppliers (original_name, trade_name, cr_number) VALUES (:o, :t, :c) ON CONFLICT (original_name) DO NOTHING", {"o": s_orig, "t": s_trade, "c": s_cr})
-                    if ok:
+                    if run_write("INSERT INTO suppliers (original_name,trade_name,cr_number) VALUES (:o,:t,:c) ON CONFLICT (original_name) DO NOTHING", {"o":s_orig,"t":s_trade,"c":s_cr}):
                         st.success(f"✅ تم تسجيل المورد [{s_orig}]!")
 
-    with t_buy:
+    # ---- تبويب 2: فاتورة توريد (متعددة البنود) ----
+    with tabs[1]:
         st.write("#### 🚚 تسجيل فاتورة توريد جديدة")
         suppliers_df = run_query("SELECT id, original_name FROM suppliers ORDER BY original_name")
         if suppliers_df.empty:
             st.warning("أضف موردين أولاً.")
         else:
-            sup_options = suppliers_df['original_name'].tolist()
-            chosen_sup = st.selectbox("اختر المورد:", sup_options)
-            sup_id = int(suppliers_df[suppliers_df['original_name'] == chosen_sup]['id'].iloc[0])
+            chosen_sup = st.selectbox("اختر المورد:", suppliers_df['original_name'].tolist(), key="proc_sup")
+            sup_id = int(suppliers_df[suppliers_df['original_name']==chosen_sup]['id'].iloc[0])
+            inv_num = st.text_input("رقم الفاتورة:", key="proc_inv_num")
+            pay_type_proc = st.selectbox("نوع الدفع:", ["آجل","نقدي","دفع جزئي"], key="proc_pay_type")
 
-            with st.form("buy_form", clear_on_submit=True):
-                mat_sel = st.selectbox("المادة الخام:", raw_materials_list)
-                sup_qty = st.number_input("الكمية المستلمة:", min_value=0.0, value=1000.0)
-                sup_price = st.number_input("سعر الوحدة (ريال):", min_value=0.0, value=8.5)
-                total_proc = sup_qty * sup_price
+            st.markdown("**أضف بنود الفاتورة:**")
+            if 'proc_items' not in st.session_state:
+                st.session_state.proc_items = []
 
-                if st.form_submit_button("اعتماد الفاتورة وإضافة للمخزن"):
-                    ok1 = run_write("INSERT INTO procurement (supplier_id, material_name, quantity, unit_price, total_price) VALUES (:sid, :m, :q, :up, :tp)",
-                                    {"sid": sup_id, "m": mat_sel, "q": sup_qty, "up": sup_price, "tp": total_proc})
-                    ok2 = run_write("UPDATE inventory SET quantity = quantity + :q WHERE material_name = :m", {"q": sup_qty, "m": mat_sel})
-                    if ok1 and ok2:
-                        st.success(f"✅ تم إضافة {sup_qty} من [{mat_sel}] للمخزن! قيمة الفاتورة: {total_proc:,.2f} ريال")
+            with st.form("add_item_form", clear_on_submit=True):
+                ci1,ci2,ci3 = st.columns(3)
+                mat_sel = ci1.selectbox("المادة:", raw_materials_list, key="item_mat")
+                item_qty = ci2.number_input("الكمية:", min_value=0.0, value=0.0, key="item_qty")
+                item_price = ci3.number_input("سعر الوحدة:", min_value=0.0, value=0.0, key="item_price")
+                if st.form_submit_button("➕ إضافة البند"):
+                    st.session_state.proc_items.append({"المادة":mat_sel,"الكمية":item_qty,"سعر الوحدة":item_price,"الإجمالي":item_qty*item_price})
+                    st.success(f"تمت إضافة: {mat_sel}")
 
-    with t_adj:
-        st.write("#### 🔧 ضبط رصيد مادة يدوياً")
+            if st.session_state.proc_items:
+                items_df = pd.DataFrame(st.session_state.proc_items)
+                st.dataframe(items_df, use_container_width=True)
+                subtotal = items_df['الإجمالي'].sum()
+                vat = subtotal * 0.15
+                grand = subtotal + vat
+                entered_total = st.number_input("القيمة الإجمالية للفاتورة (للتحقق):", min_value=0.0, value=grand, key="entered_total")
+
+                st.markdown(f"المجموع قبل الضريبة: **{subtotal:,.2f}** | ضريبة 15%: **{vat:,.2f}** | الإجمالي المحسوب: **{grand:,.2f}**")
+                diff = abs(entered_total - grand)
+                if diff > 1:
+                    st.warning(f"⚠️ فرق بين القيمة المدخلة والمحسوبة: {diff:,.2f} ريال — تحقق من الفاتورة.")
+                else:
+                    st.success("✅ القيمة الإجمالية مطابقة مع الضريبة.")
+
+                if st.button("✅ اعتماد الفاتورة وإضافة للمخزن"):
+                    if not inv_num:
+                        st.error("أدخل رقم الفاتورة أولاً!")
+                    else:
+                        for item in st.session_state.proc_items:
+                            run_write("INSERT INTO procurement (supplier_id,material_name,quantity,unit_price,total_price) VALUES (:sid,:m,:q,:up,:tp)",
+                                      {"sid":sup_id,"m":item['المادة'],"q":item['الكمية'],"up":item['سعر الوحدة'],"tp":item['الإجمالي']})
+                            run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m", {"q":item['الكمية'],"m":item['المادة']})
+                        st.success(f"✅ تم اعتماد الفاتورة {inv_num} وتحديث المخزن!")
+                        st.session_state.proc_items = []
+                        st.rerun()
+
+                if st.button("🗑️ مسح البنود"):
+                    st.session_state.proc_items = []
+                    st.rerun()
+
+    # ---- تبويب 3: دفعات مورد ----
+    with tabs[2]:
+        st.write("#### 💳 تسجيل دفعة لمورد")
+        suppliers_df2 = run_query("SELECT id, original_name FROM suppliers ORDER BY original_name")
+        if not suppliers_df2.empty:
+            sel_sup = st.selectbox("اسم المورد:", suppliers_df2['original_name'].tolist(), key="spay_sup")
+            sup_id2 = int(suppliers_df2[suppliers_df2['original_name']==sel_sup]['id'].iloc[0])
+            proc_df = run_query("SELECT id, material_name, total_price FROM procurement WHERE supplier_id=:sid ORDER BY date DESC", {"sid":sup_id2})
+            if not proc_df.empty:
+                proc_opts = [f"فاتورة #{r['id']} - {r['material_name']} - {r['total_price']:,.2f} ر" for _,r in proc_df.iterrows()]
+                sel_proc = st.selectbox("رقم الفاتورة:", proc_opts, key="spay_proc")
+                proc_id = int(sel_proc.split("#")[1].split(" ")[0])
+                spay_amt = st.number_input("المبلغ المدفوع:", min_value=0.0, value=0.0, key="spay_amt")
+                spay_type = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي"], key="spay_type")
+                spay_bank = st.text_input("اسم البنك:", key="spay_bank")
+
+                if st.button("💳 اعتماد الدفعة"):
+                    ok = run_write("INSERT INTO customer_payments (customer_id,order_id,amount,payment_type,bank_name) VALUES (:cid,:oid,:a,:pt,:b)",
+                                   {"cid":0,"oid":f"PROC-{proc_id}","a":spay_amt,"pt":spay_type,"b":spay_bank})
+                    if ok:
+                        proc_row = proc_df[proc_df['id']==proc_id].iloc[0]
+                        total_paid_so_far = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE order_id=:oid", {"oid":f"PROC-{proc_id}"})['t'].iloc[0])
+                        remaining_proc = float(proc_row['total_price']) * 1.15 - total_paid_so_far
+                        st.success(f"✅ تم تسجيل الدفعة!")
+                        st.markdown(f"""<div class="print-card">
+                        {print_header()}
+                        <h3 style="text-align:center;">إيصال دفع لمورد</h3>
+                        <p><b>المورد:</b> {sel_sup} | <b>رقم الفاتورة:</b> #{proc_id}</p>
+                        <p><b>المبلغ المدفوع:</b> {spay_amt:,.2f} ريال | <b>طريقة الدفع:</b> {spay_type}</p>
+                        <p><b>المتبقي على الفاتورة:</b> {remaining_proc:,.2f} ريال</p>
+                        <p>التاريخ: {datetime.date.today()}</p>
+                        </div>""", unsafe_allow_html=True)
+
+    # ---- تبويب 4: كشف حساب مورد ----
+    with tabs[3]:
+        st.write("#### 🔍 كشف حساب مورد")
+        suppliers_df3 = run_query("SELECT id, original_name FROM suppliers ORDER BY original_name")
+        if not suppliers_df3.empty:
+            sel_sup3 = st.selectbox("اختر المورد:", suppliers_df3['original_name'].tolist(), key="sstmt_sup")
+            sup_id3 = int(suppliers_df3[suppliers_df3['original_name']==sel_sup3]['id'].iloc[0])
+            d1,d2 = st.columns(2)
+            ds3 = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="sstmt_ds")
+            de3 = d2.date_input("إلى:", datetime.date.today(), key="sstmt_de")
+            if st.button("📊 عرض كشف المورد"):
+                proc_hist = run_query("""SELECT date as "التاريخ", material_name as "المادة", quantity as "الكمية",
+                    unit_price as "سعر الوحدة", total_price as "قيمة الفاتورة"
+                    FROM procurement WHERE supplier_id=:sid AND date BETWEEN :s AND :e ORDER BY date""",
+                    {"sid":sup_id3,"s":ds3,"e":de3})
+                total_invoices = float(proc_hist['قيمة الفاتورة'].sum()) * 1.15 if not proc_hist.empty else 0.0
+                pay_hist = run_query("""SELECT payment_date as "التاريخ", amount as "المدفوع", payment_type as "الطريقة"
+                    FROM customer_payments cp
+                    WHERE cp.order_id LIKE 'PROC-%' AND cp.payment_date BETWEEN :s AND :e""",
+                    {"s":ds3,"e":de3})
+                total_paid = float(pay_hist['المدفوع'].sum()) if not pay_hist.empty else 0.0
+                balance = total_invoices - total_paid
+
+                st.markdown(f"""<div class="print-card">{print_header()}
+                <h3 style="text-align:center;">كشف حساب مورد: {sel_sup3}</h3>
+                <p>الفترة: {ds3} إلى {de3}</p></div>""", unsafe_allow_html=True)
+                st.write("**الفواتير:**"); st.dataframe(proc_hist if not proc_hist.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True)
+                st.write("**المدفوعات:**"); st.dataframe(pay_hist if not pay_hist.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True)
+                m1,m2,m3 = st.columns(3)
+                m1.metric("إجمالي الفواتير (مع ضريبة)", f"{total_invoices:,.2f} ر")
+                m2.metric("إجمالي المدفوع", f"{total_paid:,.2f} ر")
+                m3.metric("المستحق للمورد", f"{balance:,.2f} ر")
+                if not proc_hist.empty:
+                    st.download_button("⬇️ تنزيل كشف الحساب", df_to_csv(proc_hist), f"supplier_stmt_{sel_sup3}.csv", "text/csv")
+
+    # ---- تبويب 5: ضبط المخزن ----
+    with tabs[4]:
         with st.form("adj_form", clear_on_submit=True):
-            mat_adj = st.selectbox("اختر المادة:", raw_materials_list)
-            new_qty = st.number_input("الرصيد الجديد الدقيق:", min_value=0.0)
+            mat_adj = st.selectbox("المادة:", raw_materials_list)
+            new_qty = st.number_input("الرصيد الجديد:", min_value=0.0)
             if st.form_submit_button("تحديث الرصيد"):
-                ok = run_write("UPDATE inventory SET quantity = :q WHERE material_name = :m", {"q": new_qty, "m": mat_adj})
-                if ok:
+                if run_write("UPDATE inventory SET quantity=:q WHERE material_name=:m", {"q":new_qty,"m":mat_adj}):
                     st.success(f"✅ تم تحديث رصيد [{mat_adj}] إلى {new_qty}")
 
-    with t_stock:
-        st.write("#### 📊 أرصدة المخزن الحالية")
+    # ---- تبويب 6: رصيد المخزن ----
+    with tabs[5]:
         inv_df = run_query("SELECT material_name as المادة, quantity as الكمية FROM inventory ORDER BY material_name")
+        st.dataframe(inv_df if not inv_df.empty else pd.DataFrame(), use_container_width=True)
         if not inv_df.empty:
-            st.dataframe(inv_df, use_container_width=True)
-        else:
-            st.info("المخزن فارغ.")
+            st.download_button("⬇️ تنزيل رصيد المخزن", df_to_csv(inv_df), "inventory.csv", "text/csv")
 
 # ==========================================
 # [قسم 5]: الشحن والفواتير
 # ==========================================
-elif menu == "💰 الشحن والفواتير والحسابات":
-    st.subheader("💰 منظومة الشحن والفواتير والحسابات")
-    t_ship, t_inv, t_pay, t_stmt = st.tabs(["🚚 أمر تسليم", "📄 فاتورة ضريبية", "🏦 سند قبض", "🔍 كشف حساب"])
+elif menu == "💰 الشحن والفواتير":
+    st.subheader("💰 الشحن والفواتير الضريبية")
+    tabs = st.tabs(["🚚 أمر تسليم", "📄 فاتورة ضريبية", "🏦 سند قبض", "🔍 استعلام فواتير"])
 
-    with t_ship:
-        st.write("#### 🚚 إصدار أمر تسليم")
-        orders_df = run_query("SELECT o.order_id, c.trade_name FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.status = 'قيد التنفيذ'")
+    with tabs[0]:
+        orders_df = run_query("SELECT o.order_id, c.trade_name, o.qty, c.cr_number, c.tax_number FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
         if orders_df.empty:
             st.info("لا توجد طلبيات.")
         else:
-            order_opts = [f"{r['order_id']} | {r['trade_name']}" for _, r in orders_df.iterrows()]
-            sel_ship = st.selectbox("اختر الطلبية:", order_opts)
-            sel_oid = sel_ship.split(" | ")[0]
-            shipped_qty = st.number_input("عدد الخزانات المشحونة:", min_value=1, value=5)
+            sel = st.selectbox("الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in orders_df.iterrows()])
+            oid = sel.split(" | ")[0]
+            ord_row = orders_df[orders_df['order_id']==oid].iloc[0]
+            shipped = st.number_input("عدد الخزانات المشحونة:", min_value=1, value=5)
             d_name = st.text_input("اسم السائق:")
             d_plate = st.text_input("رقم اللوحة:")
             d_iqama = st.text_input("رقم الإقامة:")
 
             if st.button("🚀 إصدار أمر التسليم"):
-                ok = run_write("INSERT INTO delivery_orders (order_id, shipped_qty, driver_name, car_plate, driver_iqama) VALUES (:oid, :sq, :dn, :dp, :di)",
-                               {"oid": sel_oid, "sq": shipped_qty, "dn": d_name, "dp": d_plate, "di": d_iqama})
+                ok = run_write("INSERT INTO delivery_orders (order_id,shipped_qty,driver_name,car_plate,driver_iqama) VALUES (:oid,:sq,:dn,:dp,:di)",
+                               {"oid":oid,"sq":shipped,"dn":d_name,"dp":d_plate,"di":d_iqama})
                 if ok:
-                    qr_hash = f"SUBUL-{random.randint(100000,999999)}"
-                    st.markdown(f"""
-                    <div class="printable-sheet">
-                    <h3 style="text-align:center;">🏭 أمر تسليم - مصنع سُبُل الريادة</h3>
-                    <p><b>الطلبية:</b> {sel_oid} | <b>التاريخ:</b> {datetime.date.today()}</p>
-                    <p><b>السائق:</b> {d_name} | <b>اللوحة:</b> {d_plate} | <b>الإقامة:</b> {d_iqama}</p>
-                    <p><b>الكمية المشحونة:</b> {shipped_qty} خزان</p>
-                    <p style="text-align:center;border:2px solid #000;padding:10px;">QR: {qr_hash}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.success("✅ تم إصدار أمر التسليم وحفظه!")
+                    new_del = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_id DESC LIMIT 1", {"oid":oid})
+                    del_id = int(new_del['delivery_id'].iloc[0]) if not new_del.empty else "—"
+                    qr = f"SUBUL-{random.randint(100000,999999)}"
+                    do_html = f"""<div class="print-card" style="color:black;">
+                    {print_header()}
+                    <h3 style="text-align:center;color:black;">أمر تسليم رقم: {del_id}</h3>
+                    <p style="color:black;"><b>الطلبية:</b> {oid} | <b>العميل:</b> {ord_row['trade_name']} | <b>التاريخ:</b> {datetime.date.today()}</p>
+                    <p style="color:black;"><b>السائق:</b> {d_name} | <b>اللوحة:</b> {d_plate} | <b>الإقامة:</b> {d_iqama}</p>
+                    <p style="color:black;"><b>الكمية المشحونة:</b> {shipped} خزان</p>
+                    <div style="border:2px solid #000;padding:10px;width:200px;margin:10px auto;text-align:center;color:black;">
+                    QR: {qr}</div>
+                    <p style="color:black;">توقيع مراقب البوابة: .........................</p>
+                    </div>"""
+                    st.markdown(do_html, unsafe_allow_html=True)
+                    do_df = pd.DataFrame([{"أمر التسليم":del_id,"الطلبية":oid,"العميل":ord_row['trade_name'],"الكمية":shipped,"السائق":d_name,"اللوحة":d_plate,"التاريخ":datetime.date.today()}])
+                    st.download_button("⬇️ تنزيل أمر التسليم", df_to_csv(do_df), f"DO_{del_id}.csv", "text/csv")
+                    st.success(f"✅ تم إصدار أمر التسليم #{del_id}!")
 
-    with t_inv:
-        st.write("#### 📄 إصدار فاتورة ضريبية")
-        deliveries_df = run_query("""
-            SELECT d.delivery_id, d.order_id, d.shipped_qty, o.unit_price, o.advance_paid, o.qty
-            FROM delivery_orders d JOIN orders o ON d.order_id = o.order_id
-        """)
+    with tabs[1]:
+        deliveries_df = run_query("""SELECT d.delivery_id, d.order_id, d.shipped_qty, d.delivery_date,
+            o.unit_price, o.advance_paid, o.qty as total_qty, c.trade_name, c.cr_number, c.tax_number
+            FROM delivery_orders d JOIN orders o ON d.order_id=o.order_id JOIN customers c ON o.customer_id=c.id""")
         if deliveries_df.empty:
             st.info("لا توجد أوامر تسليم.")
         else:
-            del_opts = [f"أمر رقم {r['delivery_id']} - {r['order_id']} - {r['shipped_qty']} خزان" for _, r in deliveries_df.iterrows()]
+            del_opts = [f"أمر #{r['delivery_id']} | {r['order_id']} | {r['trade_name']} | {r['shipped_qty']} خزان" for _,r in deliveries_df.iterrows()]
             sel_del = st.selectbox("اختر أمر التسليم:", del_opts)
-            del_id = int(sel_del.split(" ")[2])
-            del_row = deliveries_df[deliveries_df['delivery_id'] == del_id].iloc[0]
+            del_id = int(sel_del.split("#")[1].split(" ")[0])
+            dr = deliveries_df[deliveries_df['delivery_id']==del_id].iloc[0]
 
-            subtotal = float(del_row['shipped_qty']) * float(del_row['unit_price'])
-            advance_ratio = float(del_row['advance_paid']) / float(del_row['qty']) if float(del_row['qty']) > 0 else 0
-            advance_deducted = advance_ratio * float(del_row['shipped_qty'])
+            subtotal = float(dr['shipped_qty']) * float(dr['unit_price'])
+            adv_per_tank = float(dr['advance_paid']) / float(dr['total_qty']) if float(dr['total_qty']) > 0 else 0
+            adv_deducted = adv_per_tank * float(dr['shipped_qty'])
             vat = subtotal * 0.15
-            grand_total = subtotal + vat
-            net_required = grand_total - advance_deducted
+            grand = subtotal + vat
+            net = grand - adv_deducted
+            inv_num = f"INV-{del_id}-{datetime.date.today().strftime('%Y%m%d')}"
 
-            st.markdown(f"""
-            <div class="printable-sheet">
-            <h3 style="text-align:center;color:#1E3A8A;">فاتورة ضريبية رسمية</h3>
-            <p>المبلغ قبل الضريبة: <b>{subtotal:,.2f} ريال</b></p>
-            <p>ضريبة 15%: <b>{vat:,.2f} ريال</b></p>
-            <p>الإجمالي: <b>{grand_total:,.2f} ريال</b></p>
-            <p style="color:green;">خصم المقدم: <b>-{advance_deducted:,.2f} ريال</b></p>
-            <h4 style="color:red;">الصافي المستحق: {net_required:,.2f} ريال</h4>
-            </div>
-            """, unsafe_allow_html=True)
+            inv_html = f"""<div class="print-card" style="color:black;">
+            {print_header()}
+            <h3 style="text-align:center;color:black;">فاتورة ضريبية رسمية</h3>
+            <p style="color:black;"><b>رقم الفاتورة:</b> {inv_num} | <b>التاريخ:</b> {datetime.date.today()}</p>
+            <p style="color:black;"><b>العميل:</b> {dr['trade_name']} | <b>السجل التجاري:</b> {dr['cr_number']} | <b>الرقم الضريبي:</b> {dr['tax_number']}</p>
+            <table style="width:100%;border-collapse:collapse;color:black;" border="1">
+            <tr style="background:#1E3A8A;color:white;"><th>البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>
+            <tr style="color:black;"><td>خزانات فايبر جلاس</td><td>{dr['shipped_qty']}</td><td>{float(dr['unit_price']):,.2f}</td><td>{subtotal:,.2f}</td></tr>
+            </table>
+            <p style="color:black;">المجموع قبل الضريبة: <b>{subtotal:,.2f} ريال</b></p>
+            <p style="color:black;">ضريبة القيمة المضافة 15%: <b>{vat:,.2f} ريال</b></p>
+            <p style="color:black;">الإجمالي شامل الضريبة: <b>{grand:,.2f} ريال</b></p>
+            <p style="color:green;">خصم المقدم: <b>-{adv_deducted:,.2f} ريال</b></p>
+            <h3 style="color:red;">الصافي المستحق: {net:,.2f} ريال</h3>
+            </div>"""
+            st.markdown(inv_html, unsafe_allow_html=True)
 
-            if st.button("💾 حفظ الفاتورة"):
-                ok = run_write("""
-                    INSERT INTO sales_invoices (delivery_id, order_id, subtotal, vat, grand_total, advance_deducted, net_required)
-                    VALUES (:did, :oid, :st, :v, :gt, :ad, :nr)
-                """, {"did": del_id, "oid": del_row['order_id'], "st": subtotal, "v": vat, "gt": grand_total, "ad": advance_deducted, "nr": net_required})
+            inv_df_dl = pd.DataFrame([{"رقم الفاتورة":inv_num,"العميل":dr['trade_name'],"الكمية":dr['shipped_qty'],"الإجمالي":grand,"الصافي المستحق":net,"التاريخ":datetime.date.today()}])
+            st.download_button("⬇️ تنزيل الفاتورة", df_to_csv(inv_df_dl), f"{inv_num}.csv", "text/csv")
+
+            if st.button("💾 حفظ الفاتورة في النظام"):
+                ok = run_write("""INSERT INTO sales_invoices (delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required)
+                    VALUES (:did,:oid,:st,:v,:gt,:ad,:nr)""",
+                    {"did":del_id,"oid":dr['order_id'],"st":subtotal,"v":vat,"gt":grand,"ad":adv_deducted,"nr":net})
                 if ok:
-                    st.success("✅ تم حفظ الفاتورة بنجاح!")
+                    st.success(f"✅ تم حفظ الفاتورة {inv_num}!")
 
-    with t_pay:
-        st.write("#### 🏦 تسجيل سند قبض")
-        customers_df = run_query("SELECT id, trade_name FROM customers")
-        orders_df2 = run_query("SELECT order_id FROM orders WHERE status = 'قيد التنفيذ'")
-        if not customers_df.empty:
-            cust_opts = customers_df['trade_name'].tolist()
-            sel_cust = st.selectbox("العميل:", cust_opts)
-            cust_id = int(customers_df[customers_df['trade_name'] == sel_cust]['id'].iloc[0])
-
-            if not orders_df2.empty:
-                sel_ord = st.selectbox("الطلبية:", orders_df2['order_id'].tolist())
-            else:
-                sel_ord = st.text_input("كود الطلبية:")
-
-            pay_amt = st.number_input("المبلغ المستلم (ريال):", min_value=0.0, value=0.0)
-            pay_type = st.selectbox("طريقة الدفع:", ["نقدي", "تحويل بنكي", "شبكة مدى"])
-            bank = st.text_input("اسم البنك (إن وجد):")
-
-            if st.button("💵 اعتماد سند القبض"):
-                ok = run_write("INSERT INTO customer_payments (customer_id, order_id, amount, payment_type, bank_name) VALUES (:cid, :oid, :a, :pt, :b)",
-                               {"cid": cust_id, "oid": sel_ord, "a": pay_amt, "pt": pay_type, "b": bank})
-                if ok:
-                    st.success(f"✅ تم تسجيل سند القبض بمبلغ {pay_amt:,.2f} ريال!")
-
-    with t_stmt:
-        st.write("#### 🔍 كشف حساب عميل")
+    with tabs[2]:
         customers_df = run_query("SELECT id, trade_name FROM customers")
         if not customers_df.empty:
-            sel_cust = st.selectbox("اختر العميل:", customers_df['trade_name'].tolist(), key="stmt_cust")
-            cust_id = int(customers_df[customers_df['trade_name'] == sel_cust]['id'].iloc[0])
+            sel_c = st.selectbox("العميل:", customers_df['trade_name'].tolist(), key="rcpt_c")
+            cid = int(customers_df[customers_df['trade_name']==sel_c]['id'].iloc[0])
+            orders_df2 = run_query("SELECT order_id FROM orders WHERE customer_id=:cid", {"cid":cid})
+            sel_ord = st.selectbox("الطلبية:", orders_df2['order_id'].tolist() if not orders_df2.empty else ["—"])
+            pay_amt = st.number_input("المبلغ (ريال):", min_value=0.0, value=0.0)
+            pay_type = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"])
+            bank = st.text_input("البنك:")
+            if st.button("💵 اعتماد السند"):
+                if run_write("INSERT INTO customer_payments (customer_id,order_id,amount,payment_type,bank_name) VALUES (:cid,:oid,:a,:pt,:b)",
+                             {"cid":cid,"oid":sel_ord,"a":pay_amt,"pt":pay_type,"b":bank}):
+                    st.success(f"✅ تم تسجيل {pay_amt:,.2f} ريال!")
 
-            if st.button("📊 عرض كشف الحساب"):
-                payments_df = run_query("""
-                    SELECT payment_date as التاريخ, payment_type as النوع, amount as المبلغ, bank_name as البنك
-                    FROM customer_payments WHERE customer_id = :cid ORDER BY payment_date DESC
-                """, {"cid": cust_id})
-
-                invoices_df = run_query("""
-                    SELECT si.invoice_date as التاريخ, si.grand_total as الإجمالي, si.net_required as المستحق
-                    FROM sales_invoices si JOIN orders o ON si.order_id = o.order_id
-                    WHERE o.customer_id = :cid ORDER BY si.invoice_date DESC
-                """, {"cid": cust_id})
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**المدفوعات:**")
-                    st.dataframe(payments_df if not payments_df.empty else pd.DataFrame(), use_container_width=True)
-                with col2:
-                    st.write("**الفواتير:**")
-                    st.dataframe(invoices_df if not invoices_df.empty else pd.DataFrame(), use_container_width=True)
-
-                total_paid = float(payments_df['المبلغ'].sum()) if not payments_df.empty else 0.0
-                total_due = float(invoices_df['المستحق'].sum()) if not invoices_df.empty else 0.0
-                balance = total_due - total_paid
-                st.metric("الرصيد المستحق على العميل (ريال)", f"{balance:,.2f}")
+    with tabs[3]:
+        st.write("#### 🔍 استعلام فواتير")
+        customers_df4 = run_query("SELECT id, trade_name FROM customers")
+        if not customers_df4.empty:
+            sel_c4 = st.selectbox("العميل:", ["الكل"] + customers_df4['trade_name'].tolist(), key="inv_query_c")
+            d1,d2 = st.columns(2)
+            ds4 = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="inv_ds")
+            de4 = d2.date_input("إلى:", datetime.date.today(), key="inv_de")
+            if st.button("🔍 بحث عن الفواتير"):
+                if sel_c4 == "الكل":
+                    inv_res = run_query("""SELECT si.invoice_id, si.invoice_date, o.order_id, c.trade_name as العميل,
+                        si.grand_total, si.net_required FROM sales_invoices si
+                        JOIN orders o ON si.order_id=o.order_id JOIN customers c ON o.customer_id=c.id
+                        WHERE si.invoice_date BETWEEN :s AND :e ORDER BY si.invoice_date DESC""", {"s":ds4,"e":de4})
+                else:
+                    cid4 = int(customers_df4[customers_df4['trade_name']==sel_c4]['id'].iloc[0])
+                    inv_res = run_query("""SELECT si.invoice_id, si.invoice_date, o.order_id, c.trade_name as العميل,
+                        si.grand_total, si.net_required FROM sales_invoices si
+                        JOIN orders o ON si.order_id=o.order_id JOIN customers c ON o.customer_id=c.id
+                        WHERE o.customer_id=:cid AND si.invoice_date BETWEEN :s AND :e ORDER BY si.invoice_date DESC""",
+                        {"cid":cid4,"s":ds4,"e":de4})
+                st.dataframe(inv_res if not inv_res.empty else pd.DataFrame({"الحالة":["لا توجد فواتير"]}), use_container_width=True)
+                if not inv_res.empty:
+                    st.download_button("⬇️ تنزيل الفواتير", df_to_csv(inv_res), "invoices.csv", "text/csv")
 
 # ==========================================
 # [قسم 6]: العمال والأجور
 # ==========================================
-elif menu == "👷 قسم العمال والأجور":
-    st.subheader("👷 منظومة كادر العمال والأجور")
-    t_add, t_adv, t_sal, t_query = st.tabs(["👤 إضافة عامل", "💵 سلفة", "💰 مسير الراتب", "🔍 استعلام"])
+elif menu == "👷 العمال والأجور":
+    st.subheader("👷 منظومة العمال والأجور")
+    tabs = st.tabs(["👤 إضافة عامل", "💵 سلفة", "💰 مسير الراتب", "🔍 استعلام"])
 
-    with t_add:
-        with st.form("worker_form", clear_on_submit=True):
-            w_name = st.text_input("اسم العامل:")
-            w_iqama = st.text_input("رقم الإقامة:")
-            w_start = st.date_input("تاريخ بداية العمل:")
-            if st.form_submit_button("حفظ العامل"):
-                if w_name and w_iqama:
-                    ok = run_write("INSERT INTO workers (name, iqama_id, start_date) VALUES (:n, :i, :s) ON CONFLICT (iqama_id) DO NOTHING",
-                                   {"n": w_name, "i": w_iqama, "s": w_start})
-                    if ok:
-                        st.success(f"✅ تم تسجيل العامل [{w_name}]!")
+    with tabs[0]:
+        with st.form("w_form", clear_on_submit=True):
+            w_name = st.text_input("الاسم:")
+            w_iq = st.text_input("رقم الإقامة:")
+            w_st = st.date_input("تاريخ الالتحاق:")
+            if st.form_submit_button("حفظ"):
+                if w_name and w_iq:
+                    if run_write("INSERT INTO workers (name,iqama_id,start_date) VALUES (:n,:i,:s) ON CONFLICT (iqama_id) DO NOTHING", {"n":w_name,"i":w_iq,"s":w_st}):
+                        st.success(f"✅ تم تسجيل [{w_name}]!")
 
-    with t_adv:
-        workers_df = run_query("SELECT id, name, iqama_id FROM workers ORDER BY name")
-        if workers_df.empty:
-            st.info("لا يوجد عمال.")
-        else:
-            w_opts = [f"{r['name']} - {r['iqama_id']}" for _, r in workers_df.iterrows()]
-            sel_w = st.selectbox("اختر العامل:", w_opts)
-            sel_wid = int(workers_df[workers_df['name'] == sel_w.split(" - ")[0]]['id'].iloc[0])
-            adv_amt = st.number_input("مبلغ السلفة:", min_value=0.0, value=1000.0)
+    with tabs[1]:
+        wdf = run_query("SELECT id, name, iqama_id FROM workers ORDER BY name")
+        if not wdf.empty:
+            w_sel = st.selectbox("العامل:", [f"{r['name']} - {r['iqama_id']}" for _,r in wdf.iterrows()])
+            wid = int(wdf[wdf['name']==w_sel.split(" - ")[0]]['id'].iloc[0])
+            adv = st.number_input("مبلغ السلفة:", min_value=0.0, value=1000.0)
+            if st.button("💵 اعتماد"):
+                if run_write("INSERT INTO worker_advances (worker_id,amount) VALUES (:w,:a)", {"w":wid,"a":adv}):
+                    st.success(f"✅ تم صرف {adv:,.2f} ريال!")
 
-            if st.button("💵 اعتماد السلفة"):
-                ok = run_write("INSERT INTO worker_advances (worker_id, amount) VALUES (:wid, :a)", {"wid": sel_wid, "a": adv_amt})
-                if ok:
-                    st.success(f"✅ تم صرف سلفة {adv_amt:,.2f} ريال!")
+    with tabs[2]:
+        wdf2 = run_query("SELECT id, name FROM workers ORDER BY name")
+        if not wdf2.empty:
+            w_sel2 = st.selectbox("العامل:", wdf2['name'].tolist(), key="sal_w")
+            wid2 = int(wdf2[wdf2['name']==w_sel2]['id'].iloc[0])
+            adv_tot = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'", {"w":wid2})['t'].iloc[0])
+            base = st.number_input("الراتب الأساسي:", min_value=0.0, value=5000.0)
+            my = st.text_input("الشهر/السنة:", value=datetime.date.today().strftime("%Y-%m"))
+            net = base - adv_tot
+            st.markdown(f"""<div class="print-card">
+            <h4 style="text-align:center;">إيصال راتب - {w_sel2}</h4>
+            <p>الأساسي: {base:,.2f} | خصم السلف: -{adv_tot:,.2f} | <b>الصافي: {net:,.2f} ريال</b></p>
+            </div>""", unsafe_allow_html=True)
+            if st.button("💰 اعتماد الراتب"):
+                if run_write("INSERT INTO worker_salaries (worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES (:w,:my,:b,:a,:n)", {"w":wid2,"my":my,"b":base,"a":adv_tot,"n":net}):
+                    run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'", {"w":wid2})
+                    st.success(f"✅ تم اعتماد راتب {w_sel2}!")
 
-    with t_sal:
-        workers_df = run_query("SELECT id, name FROM workers ORDER BY name")
-        if not workers_df.empty:
-            sel_w = st.selectbox("اختر العامل:", workers_df['name'].tolist(), key="sal_w")
-            wid = int(workers_df[workers_df['name'] == sel_w]['id'].iloc[0])
-
-            # حساب السلف المستحقة
-            adv_df = run_query("SELECT COALESCE(SUM(amount),0) as total FROM worker_advances WHERE worker_id = :wid AND status = 'قيد الانتظار'", {"wid": wid})
-            total_advances = float(adv_df['total'].iloc[0]) if not adv_df.empty else 0.0
-
-            base_salary = st.number_input("الراتب الأساسي:", min_value=0.0, value=5000.0)
-            month_year = st.text_input("الشهر والسنة (مثال: 2026-06):", value=datetime.date.today().strftime("%Y-%m"))
-            net_salary = base_salary - total_advances
-
-            st.markdown(f"""
-            <div class="printable-sheet">
-            <h4 style="text-align:center;color:green;">إيصال راتب - {sel_w}</h4>
-            <p>الراتب الأساسي: <b>{base_salary:,.2f} ريال</b></p>
-            <p style="color:red;">خصم السلف: <b>-{total_advances:,.2f} ريال</b></p>
-            <h4>الصافي: {net_salary:,.2f} ريال</h4>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if st.button("💰 اعتماد مسير الراتب"):
-                ok = run_write("INSERT INTO worker_salaries (worker_id, month_year, base_salary, advances_deducted, net_paid) VALUES (:wid, :my, :bs, :ad, :np)",
-                               {"wid": wid, "my": month_year, "bs": base_salary, "ad": total_advances, "np": net_salary})
-                if ok:
-                    # تحديث حالة السلف
-                    run_write("UPDATE worker_advances SET status = 'مخصومة' WHERE worker_id = :wid AND status = 'قيد الانتظار'", {"wid": wid})
-                    st.success(f"✅ تم اعتماد راتب {sel_w} بصافي {net_salary:,.2f} ريال!")
-
-    with t_query:
-        search = st.text_input("ابحث باسم العامل أو رقم الإقامة:")
-        if search:
-            result = run_query("SELECT name as الاسم, iqama_id as الإقامة, start_date as تاريخ_البداية FROM workers WHERE name ILIKE :s OR iqama_id LIKE :s2",
-                               {"s": f"%{search}%", "s2": f"%{search}%"})
-            st.dataframe(result if not result.empty else pd.DataFrame({"النتيجة": ["لا يوجد نتائج"]}), use_container_width=True)
+    with tabs[3]:
+        s = st.text_input("ابحث باسم العامل أو الإقامة:")
+        if s:
+            r = run_query("SELECT name,iqama_id,start_date FROM workers WHERE name ILIKE :s OR iqama_id LIKE :s2", {"s":f"%{s}%","s2":f"%{s}%"})
+            st.dataframe(r if not r.empty else pd.DataFrame({"النتيجة":["لا توجد نتائج"]}), use_container_width=True)
 
 # ==========================================
 # [قسم 7]: الاستعلام المتقدم
 # ==========================================
-elif menu == "🔍 مركز الاستعلام المتقدم":
-    st.subheader("🔍 بوابة البحث والاستعلامات")
-
-    query_type = st.selectbox("نوع الاستعلام:", [
-        "البحث عن عميل",
-        "تتبع طلبية",
-        "حساب مورد",
-        "سجل خزان بالرقم المسلسل"
+elif menu == "🔍 الاستعلام المتقدم":
+    st.subheader("🔍 مركز الاستعلام المتقدم")
+    q_type = st.selectbox("نوع الاستعلام:", [
+        "عميل — بحث بالاسم أو السجل",
+        "طلبية — بحث بالكود أو العميل",
+        "مورد — تاريخ المشتريات",
+        "خزان — بحث بالرقم المسلسل",
+        "فاتورة — بحث برقم الفاتورة"
     ])
 
-    keyword = st.text_input("أدخل كلمة البحث:")
+    customers_df = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
+    suppliers_df = run_query("SELECT id, original_name FROM suppliers ORDER BY original_name")
+    orders_df = run_query("SELECT order_id FROM orders ORDER BY order_date DESC")
 
-    if st.button("🔍 بحث") and keyword:
-        if query_type == "البحث عن عميل":
-            df = run_query("SELECT trade_name, cr_number, tax_number FROM customers WHERE trade_name ILIKE :k", {"k": f"%{keyword}%"})
-            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة": ["لا يوجد نتائج"]}), use_container_width=True)
+    if q_type == "عميل — بحث بالاسم أو السجل":
+        sel = st.selectbox("اختر العميل:", ["الكل"] + (customers_df['trade_name'].tolist() if not customers_df.empty else []))
+        if st.button("🔍 بحث"):
+            if sel == "الكل":
+                df = run_query("SELECT trade_name as الاسم, cr_number as السجل, tax_number as الضريبي FROM customers")
+            else:
+                df = run_query("SELECT trade_name,cr_number,tax_number FROM customers WHERE trade_name=:n", {"n":sel})
+            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}), use_container_width=True)
+            if not df.empty:
+                st.download_button("⬇️ تنزيل", df_to_csv(df), "customers.csv", "text/csv")
 
-        elif query_type == "تتبع طلبية":
-            df = run_query("""
-                SELECT o.order_id, c.trade_name, o.qty, o.total_price, o.status, o.order_date
-                FROM orders o JOIN customers c ON o.customer_id = c.id
-                WHERE o.order_id ILIKE :k OR c.trade_name ILIKE :k
-            """, {"k": f"%{keyword}%"})
-            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة": ["لا يوجد نتائج"]}), use_container_width=True)
+    elif q_type == "طلبية — بحث بالكود أو العميل":
+        sel = st.selectbox("اختر الطلبية:", ["الكل"] + (orders_df['order_id'].tolist() if not orders_df.empty else []))
+        if st.button("🔍 بحث"):
+            if sel == "الكل":
+                df = run_query("SELECT o.order_id,c.trade_name,o.qty,o.total_price,o.status,o.order_date FROM orders o JOIN customers c ON o.customer_id=c.id ORDER BY o.order_date DESC")
+            else:
+                df = run_query("SELECT o.order_id,c.trade_name,o.qty,o.total_price,o.status,o.order_date FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.order_id=:oid", {"oid":sel})
+            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}), use_container_width=True)
+            if not df.empty:
+                st.download_button("⬇️ تنزيل", df_to_csv(df), "orders.csv", "text/csv")
 
-        elif query_type == "حساب مورد":
-            df = run_query("""
-                SELECT p.date, p.material_name, p.quantity, p.unit_price, p.total_price, s.original_name
-                FROM procurement p JOIN suppliers s ON p.supplier_id = s.id
-                WHERE s.original_name ILIKE :k OR s.trade_name ILIKE :k
-            """, {"k": f"%{keyword}%"})
-            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة": ["لا يوجد نتائج"]}), use_container_width=True)
+    elif q_type == "مورد — تاريخ المشتريات":
+        sel = st.selectbox("اختر المورد:", ["الكل"] + (suppliers_df['original_name'].tolist() if not suppliers_df.empty else []))
+        if st.button("🔍 بحث"):
+            if sel == "الكل":
+                df = run_query("SELECT s.original_name,p.date,p.material_name,p.quantity,p.total_price FROM procurement p JOIN suppliers s ON p.supplier_id=s.id ORDER BY p.date DESC")
+            else:
+                sid = int(suppliers_df[suppliers_df['original_name']==sel]['id'].iloc[0])
+                df = run_query("SELECT date,material_name,quantity,unit_price,total_price FROM procurement WHERE supplier_id=:sid ORDER BY date DESC", {"sid":sid})
+            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}), use_container_width=True)
+            if not df.empty:
+                st.download_button("⬇️ تنزيل", df_to_csv(df), "procurement.csv", "text/csv")
 
-        elif query_type == "سجل خزان بالرقم المسلسل":
-            df = run_query("""
-                SELECT pt.serial_number, pt.order_id, pt.prod_date, pt.supervisor,
-                       pt.resin_act, pt.mat_act, pt.roving_act
-                FROM production_tanks pt
-                WHERE pt.serial_number ILIKE :k
-            """, {"k": f"%{keyword}%"})
-            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة": ["لا يوجد نتائج"]}), use_container_width=True)
+    elif q_type == "خزان — بحث بالرقم المسلسل":
+        sn = st.text_input("أدخل الرقم المسلسل أو جزء منه:")
+        if st.button("🔍 بحث") and sn:
+            df = run_query("SELECT serial_number,order_id,prod_date,supervisor FROM production_tanks WHERE serial_number ILIKE :s", {"s":f"%{sn}%"})
+            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}), use_container_width=True)
+
+    elif q_type == "فاتورة — بحث برقم الفاتورة":
+        inv_id = st.number_input("رقم الفاتورة:", min_value=1, value=1)
+        if st.button("🔍 بحث"):
+            df = run_query("""SELECT si.invoice_id,si.invoice_date,o.order_id,c.trade_name,
+                si.grand_total,si.net_required FROM sales_invoices si
+                JOIN orders o ON si.order_id=o.order_id JOIN customers c ON o.customer_id=c.id
+                WHERE si.invoice_id=:iid""", {"iid":inv_id})
+            st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}), use_container_width=True)
+            if not df.empty:
+                st.download_button("⬇️ تنزيل", df_to_csv(df), f"invoice_{inv_id}.csv", "text/csv")
+
+# ==========================================
+# [قسم 8]: حذف كامل للبيانات
+# ==========================================
+elif menu == "🗑️ حذف كامل للبيانات":
+    st.subheader("🗑️ حذف كامل لجميع البيانات")
+    st.error("⚠️ تحذير: هذه العملية ستحذف جميع البيانات بشكل نهائي ولا يمكن التراجع عنها!")
+
+    confirm = st.radio("هل أنت متأكد من حذف جميع البيانات؟", ["لا، إلغاء العملية", "نعم، أريد الحذف الكامل"])
+
+    if confirm == "نعم، أريد الحذف الكامل":
+        st.warning("⚠️ ستُحذف جميع البيانات. اضغط الزر أدناه للتأكيد النهائي.")
+        if st.button("🗑️ تأكيد الحذف الكامل — لا رجعة"):
+            tables = ["sales_invoices","customer_payments","delivery_orders","production_tanks",
+                      "production_days","general_expenses","worker_salaries","worker_advances",
+                      "workers","procurement","orders","customers","suppliers"]
+            for t in tables:
+                run_write(f"DELETE FROM {t}")
+            run_write("""UPDATE inventory SET quantity=0.0""")
+            st.success("✅ تم حذف جميع البيانات وإعادة ضبط المخزن إلى الصفر.")
+            st.balloons()
+    else:
+        st.info("✅ لم يتم الحذف. العملية ملغاة.")
