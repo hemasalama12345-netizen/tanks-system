@@ -604,12 +604,23 @@ elif menu == "📦 الطلبيات":
                     "text/csv"
                 )
 
-                # زر تنزيل HTML للطباعة
+                # إضافة charset للـ HTML عشان العربي يظهر صح
+                full_html_with_charset = """<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+""" + full_html + """
+</body>
+</html>"""
+
                 st.download_button(
                     label="🖨️ تنزيل التقرير للطباعة (HTML)",
-                    data=full_html.encode('utf-8'),
+                    data=full_html_with_charset.encode('utf-8'),
                     file_name="orders_report.html",
-                    mime="text/html",
+                    mime="text/html; charset=utf-8",
                     help="افتح الملف في المتصفح ثم اضغط Cmd+P للطباعة أو حفظ PDF"
                 )
                 st.caption("💡 بعد التنزيل: افتح الملف في Safari أو Chrome ثم اضغط Cmd+P لطباعته أو حفظه PDF")
