@@ -593,24 +593,26 @@ elif menu == "📦 الطلبيات":
                 </div>
                 """
 
-                st.markdown(full_html, unsafe_allow_html=True)
+                # عرض الجدول في Streamlit
+                st.dataframe(sum_df, use_container_width=True, hide_index=True)
 
-                # زر طباعة + تنزيل
-                col_p1, col_p2 = st.columns(2)
-                col_p1.download_button(
+                # زر تنزيل CSV
+                st.download_button(
                     "⬇️ تنزيل CSV",
                     df_to_csv(sum_df),
                     "active_orders_summary.csv",
                     "text/csv"
                 )
-                col_p2.markdown("""
-                <button onclick="window.print()" style="
-                    background:#1E3A8A; color:white; padding:8px 20px;
-                    border:none; border-radius:5px; cursor:pointer;
-                    font-family:Cairo,sans-serif; font-size:14px; width:100%;">
-                    🖨️ طباعة التقرير
-                </button>
-                """, unsafe_allow_html=True)
+
+                # زر تنزيل HTML للطباعة
+                st.download_button(
+                    label="🖨️ تنزيل التقرير للطباعة (HTML)",
+                    data=full_html.encode('utf-8'),
+                    file_name="orders_report.html",
+                    mime="text/html",
+                    help="افتح الملف في المتصفح ثم اضغط Cmd+P للطباعة أو حفظ PDF"
+                )
+                st.caption("💡 بعد التنزيل: افتح الملف في Safari أو Chrome ثم اضغط Cmd+P لطباعته أو حفظه PDF")
 
     # تبويب 4: دفعات عميل
     with tabs[3]:
