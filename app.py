@@ -7,15 +7,16 @@ from sqlalchemy import text
 # ================================================================
 # QR Code Generator — Standard, Reliable & Professional
 # ================================================================
+import io as _io
+import base64 as _b64
+from PIL import Image as _Img, ImageDraw as _Draw
+import qrcode
+
 def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=2):
     """
     توليد QR Code حقيقي واحترافي باستخدام مكتبة qrcode القياسية المعتمدة.
     مضمون القراءة 100% ومتوافق تماماً مع الجوالات وتطبيقات قراءة الفواتير (ZATCA).
     """
-    import qrcode
-    import io
-    import base64
-    
     try:
         qr = qrcode.QRCode(
             version=None,
@@ -28,112 +29,16 @@ def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=2):
         
         # إنشاء الصورة باللون المطلوب والخلفية البيضاء النظيفة
         img = qr.make_image(fill_color=color, back_color="white")
-        buf = io.BytesIO()
+        buf = _io.BytesIO()
         img.save(buf, format='PNG')
-        return base64.b64encode(buf.getvalue()).decode()
+        return _b64.b64encode(buf.getvalue()).decode()
     except Exception as e:
         # في حال حدوث أي خطأ استثنائي، يتم إرجاع مربع أبيض فارغ لمنع تعطل النظام تلقائياً
-        from PIL import Image, ImageDraw
         size = 150
-        img = Image.new('RGB', (size, size), (255, 255, 255))
-        buf = io.BytesIO()
+        img = _Img.new('RGB', (size, size), (255, 255, 255))
+        buf = _io.BytesIO()
         img.save(buf, format='PNG')
-        return base64.b64encode(buf.getvalue()).decode()
-
-def generate_zatca_tlv_b64(seller_name, vat_no, timestamp, total_amount, vat_amount):
-    """
-    توليد ترميز TLV Base64 القياسي المتوافق مع متطلبات الفاتورة الإلكترونية
-    """
-    def to_tlv(tag, value):
-        val_bytes = str(value).encode('utf-8')
-        return bytes([tag, len(val_bytes)]) + val_bytes
-    
-    tlv_bytes = (
-        to_tlv(1, seller_name) +
-        to_tlv(2, vat_no) +
-        to_tlv(3, timestamp) +
-        to_tlv(4, f"{float(total_amount):.2f}") +
-        to_tlv(5, f"{float(vat_amount):.2f}")
-    )
-    return _b64.b64encode(tlv_bytes).decode('utf-8')
-
-try:
-    conn = st.connection("postgresql", type="sql")
-except Exception as e:
-    st.error(f"خطأ في الاتصال: {e}")
-    st.stop()
-
-def run_query(query, params=None):
-    try:
-        return conn.query(query, params=params, ttl=0)
-    except Exception as e:
-        st.error(f"خطأ: {e}")
-        return pd.DataFrame()
-
-def run_write(query, params=None):
-    try:
-        with conn.session as s:
-            s.execute(text(query), params or {})
-            s.commit()
-        return True
-    except Exception as e:
-        st.error(f"خطأ: {e}")
-        return False
-
-FACTORY_NAME = "شركة مصنع سُبُل الريادة"
-FACTORY_ADDRESS = "الرياض - مدينة الخرج"
-FACTORY_CR = "—"
-FACTORY_TAX = "—"
-
-raw_materials_list = [
-    "راتنج كميائي صنف اول للديزل",
-    "راتنج كميائي صنف ٢ للصرف الصحي",
-    "ألياف (Mat 450)",
-    "روفرز (Roving 600)",
-    "تيسو (Tissue)",
-    "مصلد (Catalyst)",
-    "كربونات الكالسيوم",
-    "سيليكا (Silica)"
-]
-
-st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v7.0", layout="wide")
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-html, body, [data-testid="stSidebar"], .stApp { font-family: 'Cairo', sans-serif; direction: RTL; text-align: right; }
-.main-header { font-size: 26px; color: #1E3A8A; font-weight: bold; border-bottom: 3px solid #FBBF24; padding-bottom: 5px; }
-.designer-tag { font-size: 12px; color: #64748B; background: #F1F5F9; padding: 4px 12px; border-radius: 20px; }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown(
-    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">'
-    f'<div class="main-header">🏭 {FACTORY_NAME} — نظام ERP v7.0</div>'
-    f'<div class="designer-tag">تصميم المهندس محمد سلامة</div>'
-    f'</div>', unsafe_allow_html=True
-)
-
-def df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8-sig')
-
-def render_header():
-    st.markdown(f"""
-    <div style="border:1px solid #CBD5E1;padding:15px;border-radius:8px;background:#fff;margin-bottom:10px;">
-        <h2 style="text-align:center;color:#1E3A8A;margin:0;">{FACTORY_NAME}</h2>
-        <p style="text-align:center;color:#555;margin:3px 0;">{FACTORY_ADDRESS}</p>
-        <p style="text-align:center;color:#555;font-size:12px;margin:0;">س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p>
-        <hr style="border-color:#1E3A8A;margin-top:8px;">
-    </div>
-    """, unsafe_allow_html=True)
-
-def generate_customer_statement_html(customer_name, customer_info, date_from, date_to, orders_data):
-    """
-    Generates a full printable HTML customer account statement.
-    orders_data: list of dicts, each containing order details, deliveries, invoices, payments.
-    """
-    today_str = datetime.date.today().strftime("%Y/%m/%d")
-    date_from_str = str(date_from)
-    date_to_str   = str(date_to)
+        return _b64.b64encode(buf.getvalue()).decode()
 
     cr_number  = customer_info.get('cr_number', '—') or '—'
     tax_number = customer_info.get('tax_number', '—') or '—'
