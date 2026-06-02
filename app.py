@@ -453,40 +453,164 @@ elif menu == "📦 الطلبيات":
             if summary_rows:
                 sum_df = pd.DataFrame(summary_rows)
                 st.markdown("---")
-                st.markdown("### 📋 جدول ملخص كل الطلبيات")
+                st.markdown("### 📋 جدول ملخص كل الطلبيات الجارية")
 
-                # تنسيق الأرقام
-                display_df = sum_df.copy()
-                for col in ["قيمة العقد","ضريبة 15%","الإجمالي مع الضريبة","الدفعة المقدمة","الدفعات اللاحقة","إجمالي المحصّل","المستحق"]:
-                    if col in display_df.columns:
-                        display_df[col] = display_df[col].apply(lambda x: f"{x:,.2f} ر")
+                # بناء جدول HTML كامل للطباعة
+                today_str = datetime.date.today().strftime("%Y/%m/%d")
+                rows_html = ""
+                for _, r in sum_df.iterrows():
+                    rows_html += f"""
+                    <tr>
+                        <td>{r["رقم الطلبية"]}</td>
+                        <td>{r["العميل"]}</td>
+                        <td>{int(r["الكمية"])}</td>
+                        <td>{int(r["المصنّع"])}</td>
+                        <td>{int(r["المسلّم"])}</td>
+                        <td>{float(r["قيمة العقد"]):,.2f}</td>
+                        <td>{float(r["ضريبة 15%"]):,.2f}</td>
+                        <td>{float(r["الإجمالي مع الضريبة"]):,.2f}</td>
+                        <td>{float(r["الدفعة المقدمة"]):,.2f}</td>
+                        <td>{float(r["الدفعات اللاحقة"]):,.2f}</td>
+                        <td>{float(r["إجمالي المحصّل"]):,.2f}</td>
+                        <td style="color:red;font-weight:bold;">{float(r["المستحق"]):,.2f}</td>
+                    </tr>"""
 
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "رقم الطلبية": st.column_config.TextColumn(width="medium"),
-                        "العميل": st.column_config.TextColumn(width="medium"),
-                        "المستحق": st.column_config.TextColumn(width="medium"),
-                    }
+                # صف الإجماليات
+                total_contract = sum_df["قيمة العقد"].sum()
+                total_vat = sum_df["ضريبة 15%"].sum()
+                total_grand = sum_df["الإجمالي مع الضريبة"].sum()
+                total_adv2 = sum_df["الدفعة المقدمة"].sum()
+                total_pays2 = sum_df["الدفعات اللاحقة"].sum()
+                total_coll = sum_df["إجمالي المحصّل"].sum()
+                total_due = sum_df["المستحق"].sum()
+
+                full_html = f"""
+                <style>
+                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+                .print-table-wrapper {{
+                    font-family: 'Cairo', sans-serif;
+                    direction: rtl;
+                    padding: 20px;
+                }}
+                .print-factory-header {{
+                    text-align: center;
+                    border-bottom: 3px solid #1E3A8A;
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                }}
+                .print-factory-header h2 {{ color: #1E3A8A; margin: 0; font-size: 20px; }}
+                .print-factory-header p {{ color: #555; margin: 3px 0; font-size: 12px; }}
+                .print-title {{ text-align: center; color: #1E3A8A; font-size: 16px; font-weight: bold; margin: 10px 0; }}
+                .print-date {{ text-align: center; color: #666; font-size: 12px; margin-bottom: 15px; }}
+                .main-table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 11px;
+                    direction: rtl;
+                }}
+                .main-table th {{
+                    background: #1E3A8A;
+                    color: white;
+                    padding: 8px 5px;
+                    text-align: center;
+                    border: 1px solid #1E3A8A;
+                    font-size: 11px;
+                }}
+                .main-table td {{
+                    padding: 7px 5px;
+                    text-align: center;
+                    border: 1px solid #CBD5E1;
+                    font-size: 11px;
+                }}
+                .main-table tr:nth-child(even) {{ background: #F8FAFC; }}
+                .main-table tr:hover {{ background: #EFF6FF; }}
+                .totals-row td {{
+                    background: #1E3A8A !important;
+                    color: white !important;
+                    font-weight: bold;
+                    padding: 8px 5px;
+                    border: 1px solid #1E3A8A;
+                }}
+                .print-footer {{
+                    margin-top: 20px;
+                    text-align: center;
+                    font-size: 11px;
+                    color: #888;
+                    border-top: 1px solid #CBD5E1;
+                    padding-top: 8px;
+                }}
+                @media print {{
+                    body {{ margin: 0; }}
+                    .print-table-wrapper {{ padding: 10px; }}
+                }}
+                </style>
+
+                <div class="print-table-wrapper">
+                    <div class="print-factory-header">
+                        <h2>{FACTORY_NAME}</h2>
+                        <p>{FACTORY_ADDRESS}</p>
+                        <p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p>
+                    </div>
+                    <div class="print-title">تقرير الطلبيات الجارية وحالتها المالية والتشغيلية</div>
+                    <div class="print-date">تاريخ التقرير: {today_str} | عدد الطلبيات: {len(sum_df)}</div>
+
+                    <table class="main-table">
+                        <thead>
+                            <tr>
+                                <th>رقم الطلبية</th>
+                                <th>العميل</th>
+                                <th>الكمية المطلوبة</th>
+                                <th>المصنّع</th>
+                                <th>المسلّم</th>
+                                <th>قيمة العقد (ر)</th>
+                                <th>ضريبة 15% (ر)</th>
+                                <th>الإجمالي مع الضريبة (ر)</th>
+                                <th>الدفعة المقدمة (ر)</th>
+                                <th>الدفعات اللاحقة (ر)</th>
+                                <th>إجمالي المحصّل (ر)</th>
+                                <th>🔴 المستحق (ر)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows_html}
+                        </tbody>
+                        <tfoot>
+                            <tr class="totals-row">
+                                <td colspan="5">الإجماليات الكلية</td>
+                                <td>{total_contract:,.2f}</td>
+                                <td>{total_vat:,.2f}</td>
+                                <td>{total_grand:,.2f}</td>
+                                <td>{total_adv2:,.2f}</td>
+                                <td>{total_pays2:,.2f}</td>
+                                <td>{total_coll:,.2f}</td>
+                                <td>{total_due:,.2f}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="print-footer">
+                        تم إنشاء هذا التقرير بواسطة نظام ERP — {FACTORY_NAME} — {today_str}
+                    </div>
+                </div>
+                """
+
+                st.markdown(full_html, unsafe_allow_html=True)
+
+                # زر طباعة + تنزيل
+                col_p1, col_p2 = st.columns(2)
+                col_p1.download_button(
+                    "⬇️ تنزيل CSV",
+                    df_to_csv(sum_df),
+                    "active_orders_summary.csv",
+                    "text/csv"
                 )
-
-                # عرض HTML للطباعة
-                with st.expander("🖨️ معاينة للطباعة"):
-                    html_table = sum_df.to_html(index=False, classes="table", border=1)
-                    st.markdown(f"""
-                    <style>
-                    .table {{ width:100%; border-collapse:collapse; font-size:12px; font-family:'Cairo',sans-serif; direction:rtl; }}
-                    .table th {{ background:#1E3A8A; color:white; padding:6px; text-align:center; }}
-                    .table td {{ padding:5px; text-align:center; border:1px solid #CBD5E1; }}
-                    .table tr:nth-child(even) {{ background:#F8FAFC; }}
-                    </style>
-                    {html_table}
-                    """, unsafe_allow_html=True)
-
-                col_dl1, col_dl2 = st.columns(2)
-                col_dl1.download_button("⬇️ تنزيل Excel/CSV", df_to_csv(sum_df), "active_orders_summary.csv", "text/csv")
+                col_p2.markdown("""
+                <button onclick="window.print()" style="
+                    background:#1E3A8A; color:white; padding:8px 20px;
+                    border:none; border-radius:5px; cursor:pointer;
+                    font-family:Cairo,sans-serif; font-size:14px; width:100%;">
+                    🖨️ طباعة التقرير
+                </button>
+                """, unsafe_allow_html=True)
 
     # تبويب 4: دفعات عميل
     with tabs[3]:
