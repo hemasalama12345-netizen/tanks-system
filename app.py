@@ -5,7 +5,7 @@ import random
 from sqlalchemy import text
 
 # ================================================================
-# QR Code Generator — High Performance & Fully Robust
+# QR Code Generator — High Performance & Fully ZATCA Compliant
 # ================================================================
 import io as _io, base64 as _b64
 from PIL import Image as _Img, ImageDraw as _Draw
@@ -16,9 +16,8 @@ def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=4):
     """
     try:
         import qrcode
-        # استخدام المكتبة القياسية إذا كانت متوفرة للتوسيع التلقائي الكامل للبيانات
         qr = qrcode.QRCode(
-            version=None,  # توسيع تلقائي بحسب حجم البيانات لمنع القطع
+            version=None,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
             box_size=module_size,
             border=quiet,
@@ -30,11 +29,9 @@ def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=4):
         img.save(buf, format='PNG')
         return _b64.b64encode(buf.getvalue()).decode()
     except Exception:
-        # نسخة احتياطية نقية مبنية على التوسيع التلقائي وتشفير UTF-8 لمنع توقف النظام أو القطع
         raw = text.encode('utf-8', errors='replace')
         n = len(raw)
         
-        # تحديد الإصدار ديناميكياً لتفادي مشكلة امتلاء المصفوفة الثابتة
         if n <= 19: ver, ec, dc = 1, 7, 19
         elif n <= 34: ver, ec, dc = 2, 10, 34
         elif n <= 55: ver, ec, dc = 3, 15, 55
@@ -87,6 +84,23 @@ def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=4):
         buf = _io.BytesIO()
         img.save(buf, format='PNG')
         return _b64.b64encode(buf.getvalue()).decode()
+
+def generate_zatca_tlv_b64(seller_name, vat_no, timestamp, total_amount, vat_amount):
+    """
+    توليد ترميز TLV Base64 المتوافق تماماً مع هيئة الزكاة والضريبة والجمارك (ZATCA) السعودية للفواتير الإلكترونية
+    """
+    def to_tlv(tag, value):
+        val_bytes = str(value).encode('utf-8')
+        return bytes([tag, len(val_bytes)]) + val_bytes
+    
+    tlv_bytes = (
+        to_tlv(1, seller_name) +
+        to_tlv(2, vat_no) +
+        to_tlv(3, timestamp) +
+        to_tlv(4, f"{float(total_amount):.2f}") +
+        to_tlv(5, f"{float(vat_amount):.2f}")
+    )
+    return _b64.b64encode(tlv_bytes).decode('utf-8')
 
 try:
     conn = st.connection("postgresql", type="sql")
@@ -2133,8 +2147,14 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
               <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
             </tr>'''
             for i,sn in enumerate(serials_list))
-        qr_inv_data  = f"INV:{inv_n}|DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|QTY:{qty}|TYPE:{tu}|CAP:{tc}|TOTAL:{grand:.2f}|NET:{net:.2f}|DATE:{today_str}|VAT_REG:{tax_number}"
-        _qr_inv_b64  = make_qr_b64(qr_inv_data, color=(220,38,38), module_size=7)
+        zatca_tlv_text = generate_zatca_tlv_b64(
+            seller_name="شركة مصنع سُبُل الريادة",
+            vat_no=tax_number,
+            timestamp=f"{today_str}T12:00:00Z",
+            total_amount=grand,
+            vat_amount=vat
+        )
+        _qr_inv_b64  = make_qr_b64(zatca_tlv_text, color=(30, 58, 138), module_size=7)
         _tpl_inv = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
