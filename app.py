@@ -2156,15 +2156,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
               <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
             </tr>'''
             for i,sn in enumerate(serials_list))
-        zatca_tlv_text = generate_zatca_tlv_b64(
-            seller_name="شركة مصنع سُبُل الريادة",
-            vat_no=tax_number,
-            timestamp=f"{today_str}T12:00:00Z",
-            total_amount=grand,
-            vat_amount=vat
-        )
-        # Use stylized generation with larger modules for better style replication
-        _qr_inv_b64  = make_qr_b64(zatca_tlv_text, color=(30, 58, 138), module_size=12, quiet=4)
+        qr_inv_text = f"INV:{inv_n}|SELLER:{FACTORY_NAME}|VAT:{FACTORY_TAX}|DATE:{today_str}|TOTAL:{grand:.2f}|TAX:{vat:.2f}|BUYER:{customer_name}"
+        _qr_inv_b64 = make_qr_b64(qr_inv_text, color=(30, 58, 138), module_size=8, quiet=4)
         _tpl_inv = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -2645,15 +2638,8 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                         adv_order = float(order_info['advance_paid'].iloc[0]) if not order_info.empty else 0
                         remaining_after = contract_val - adv_order - total_paid_so_far
 
-                        # توليد QR وفق معيار ZATCA TLV لسند القبض
-                        qr_rcpt = generate_zatca_tlv_b64(
-                            seller_name=FACTORY_NAME,
-                            vat_no=FACTORY_TAX,
-                            timestamp=f"{today_r}T12:00:00Z",
-                            total_amount=pa4,
-                            vat_amount=round(pa4 * 15 / 115, 2)
-                        )
-                        _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=10, quiet=4)
+                        qr_rcpt = f"RCPT:{receipt_no}|SELLER:{FACTORY_NAME}|CLIENT:{sc4}|ORDER:{so4}|AMOUNT:{pa4:.2f}|METHOD:{pt4}|DATE:{today_r}"
+                        _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=8, quiet=4)
 
                         receipt_html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
