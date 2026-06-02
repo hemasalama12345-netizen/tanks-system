@@ -73,6 +73,542 @@ def render_header():
     </div>
     """, unsafe_allow_html=True)
 
+def generate_customer_statement_html(customer_name, customer_info, date_from, date_to, orders_data):
+    """
+    Generates a full printable HTML customer account statement.
+    orders_data: list of dicts, each containing order details, deliveries, invoices, payments.
+    """
+    today_str = datetime.date.today().strftime("%Y/%m/%d")
+    date_from_str = str(date_from)
+    date_to_str   = str(date_to)
+
+    cr_number  = customer_info.get('cr_number', '—') or '—'
+    tax_number = customer_info.get('tax_number', '—') or '—'
+    phone      = customer_info.get('phone', '—') or '—'
+    address    = customer_info.get('address', '—') or '—'
+
+    grand_contract = sum(o['total_price']   for o in orders_data)
+    grand_vat      = grand_contract * 0.15
+    grand_total_vat= grand_contract + grand_vat
+    grand_adv      = sum(o['advance_paid']  for o in orders_data)
+    grand_invoiced = sum(o['total_invoiced'] for o in orders_data)
+    grand_paid     = sum(o['total_paid']    for o in orders_data)
+    grand_balance  = grand_invoiced - grand_paid
+    grand_tanks    = sum(o['qty']           for o in orders_data)
+    grand_delivered= sum(o['total_delivered'] for o in orders_data)
+
+    # ---- Build per-order HTML blocks ----
+    orders_html = ""
+    for ord_ in orders_data:
+        oid          = ord_['order_id']
+        use_         = ord_['tank_use']
+        cap_         = ord_['tank_capacity'] or '—'
+        typ_         = ord_['tank_type']
+        status_      = ord_['status']
+        qty_         = int(ord_['qty'])
+        unit_p       = float(ord_['unit_price'])
+        total_p      = float(ord_['total_price'])
+        adv_p        = float(ord_['advance_paid'])
+        rem_bal      = float(ord_['remaining_balance'])
+        order_date_  = str(ord_['order_date'])
+        delivered_   = int(ord_['total_delivered'])
+        rem_del      = qty_ - delivered_
+        pct_del      = int(delivered_ / qty_ * 100) if qty_ > 0 else 0
+        t_inv        = float(ord_['total_invoiced'])
+        t_paid       = float(ord_['total_paid'])
+        bal_ord      = t_inv - t_paid
+
+        status_color = "#16a34a" if status_ == "مكتملة" else ("#dc2626" if status_ == "ملغاة" else "#d97706")
+        bal_color    = "#dc2626" if bal_ord > 0 else "#16a34a"
+
+        # deliveries rows
+        del_rows = ""
+        for d in ord_.get('deliveries', []):
+            del_rows += f"""<tr>
+                <td>{d.get('delivery_id','—')}</td>
+                <td>{d.get('delivery_date','—')}</td>
+                <td>{int(d.get('shipped_qty',0))}</td>
+                <td>{d.get('driver_name','—')}</td>
+                <td>{d.get('car_plate','—')}</td>
+            </tr>"""
+        if not del_rows:
+            del_rows = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">لم يتم تسليم خزانات بعد</td></tr>'
+
+        # invoices rows
+        inv_rows = ""
+        for inv in ord_.get('invoices', []):
+            inv_rows += f"""<tr>
+                <td>{inv.get('invoice_id','—')}</td>
+                <td>{inv.get('invoice_date','—')}</td>
+                <td>{float(inv.get('grand_total',0)):,.2f}</td>
+                <td>{float(inv.get('advance_deducted',0)):,.2f}</td>
+                <td style="color:#dc2626;font-weight:600;">{float(inv.get('net_required',0)):,.2f}</td>
+            </tr>"""
+        if not inv_rows:
+            inv_rows = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">لا توجد فواتير</td></tr>'
+
+        # payments rows
+        pay_rows = ""
+        for pay in ord_.get('payments', []):
+            pay_rows += f"""<tr>
+                <td>{pay.get('payment_date','—')}</td>
+                <td style="color:#16a34a;font-weight:600;">{float(pay.get('amount',0)):,.2f}</td>
+                <td>{pay.get('payment_type','—')}</td>
+                <td>{pay.get('bank_name','—')}</td>
+            </tr>"""
+        if not pay_rows:
+            pay_rows = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;">لا توجد دفعات مسجلة</td></tr>'
+
+        progress_color = "#16a34a" if pct_del >= 100 else ("#d97706" if pct_del >= 50 else "#dc2626")
+
+        orders_html += f"""
+        <div class="order-block">
+            <div class="order-header">
+                <span class="order-id">📦 {oid}</span>
+                <span class="order-status" style="background:{status_color};">{status_}</span>
+            </div>
+
+            <!-- بيانات الطلبية -->
+            <div class="info-grid">
+                <div class="info-item"><span class="info-label">الاستخدام</span><span class="info-value">{use_}</span></div>
+                <div class="info-item"><span class="info-label">السعة</span><span class="info-value">{cap_}</span></div>
+                <div class="info-item"><span class="info-label">نوع التركيب</span><span class="info-value">{typ_}</span></div>
+                <div class="info-item"><span class="info-label">تاريخ الطلبية</span><span class="info-value">{order_date_}</span></div>
+                <div class="info-item"><span class="info-label">الكمية المطلوبة</span><span class="info-value">{qty_} خزان</span></div>
+                <div class="info-item"><span class="info-label">سعر الخزان</span><span class="info-value">{unit_p:,.2f} ر</span></div>
+                <div class="info-item"><span class="info-label">قيمة العقد</span><span class="info-value">{total_p:,.2f} ر</span></div>
+                <div class="info-item"><span class="info-label">الدفعة المقدمة</span><span class="info-value">{adv_p:,.2f} ر</span></div>
+            </div>
+
+            <!-- شريط التسليم -->
+            <div class="progress-section">
+                <div class="progress-label">
+                    <span>نسبة التسليم: <b>{pct_del}%</b></span>
+                    <span>مسلّم: <b>{delivered_}</b> | متبقي: <b>{rem_del}</b> خزان</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width:{pct_del}%;background:{progress_color};"></div>
+                </div>
+            </div>
+
+            <!-- جدول التسليمات -->
+            <div class="section-title">🚚 سجل التسليمات</div>
+            <table class="data-table">
+                <thead><tr>
+                    <th>رقم التسليم</th><th>التاريخ</th><th>الكمية</th><th>السائق</th><th>رقم اللوحة</th>
+                </tr></thead>
+                <tbody>{del_rows}</tbody>
+            </table>
+
+            <!-- جدول الفواتير -->
+            <div class="section-title">📄 الفواتير الصادرة</div>
+            <table class="data-table">
+                <thead><tr>
+                    <th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي (ر)</th><th>المقدم المخصوم (ر)</th><th>المستحق (ر)</th>
+                </tr></thead>
+                <tbody>{inv_rows}</tbody>
+            </table>
+
+            <!-- جدول الدفعات -->
+            <div class="section-title">💵 الدفعات المستلمة</div>
+            <table class="data-table">
+                <thead><tr>
+                    <th>التاريخ</th><th>المبلغ (ر)</th><th>طريقة الدفع</th><th>البنك</th>
+                </tr></thead>
+                <tbody>{pay_rows}</tbody>
+            </table>
+
+            <!-- ملخص الطلبية -->
+            <div class="order-summary">
+                <div class="summary-box">
+                    <div class="summary-label">إجمالي الفواتير</div>
+                    <div class="summary-value">{t_inv:,.2f} ر</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">إجمالي المدفوع</div>
+                    <div class="summary-value" style="color:#16a34a;">{t_paid:,.2f} ر</div>
+                </div>
+                <div class="summary-box" style="border-color:{bal_color};">
+                    <div class="summary-label">الرصيد المستحق</div>
+                    <div class="summary-value" style="color:{bal_color};">{bal_ord:,.2f} ر</div>
+                </div>
+            </div>
+        </div>
+        """
+
+    final_bal_color = "#dc2626" if grand_balance > 0 else "#16a34a"
+
+    html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>كشف حساب — {customer_name}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{ box-sizing:border-box; margin:0; padding:0; }}
+body{{
+    font-family:'Cairo',sans-serif;
+    direction:rtl;
+    background:#f8fafc;
+    color:#1e293b;
+    font-size:13px;
+}}
+.page{{
+    max-width:900px;
+    margin:0 auto;
+    background:#fff;
+    padding:30px;
+}}
+
+/* ===== Header ===== */
+.factory-header{{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:4px solid #1E3A8A;
+    padding-bottom:15px;
+    margin-bottom:20px;
+}}
+.factory-logo{{ font-size:28px; }}
+.factory-info h1{{ color:#1E3A8A; font-size:20px; margin-bottom:3px; }}
+.factory-info p{{ color:#64748b; font-size:11px; margin:1px 0; }}
+.doc-meta{{ text-align:left; }}
+.doc-meta .doc-title{{
+    background:#1E3A8A;
+    color:#fff;
+    padding:6px 18px;
+    border-radius:20px;
+    font-size:14px;
+    font-weight:700;
+    margin-bottom:8px;
+    display:inline-block;
+}}
+.doc-meta p{{ color:#64748b; font-size:11px; text-align:left; }}
+
+/* ===== Customer Info ===== */
+.customer-card{{
+    background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
+    color:#fff;
+    border-radius:12px;
+    padding:18px 22px;
+    margin-bottom:20px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+}}
+.customer-card h2{{ font-size:18px; margin-bottom:4px; }}
+.customer-card .meta{{ font-size:11px; opacity:0.85; }}
+.customer-card .period{{
+    background:rgba(255,255,255,0.2);
+    border-radius:8px;
+    padding:8px 16px;
+    text-align:center;
+}}
+.customer-card .period span{{ display:block; font-size:11px; opacity:0.8; }}
+.customer-card .period strong{{ font-size:13px; }}
+
+/* ===== Grand Summary ===== */
+.grand-summary{{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:10px;
+    margin-bottom:24px;
+}}
+.gs-card{{
+    background:#f1f5f9;
+    border-radius:10px;
+    padding:12px;
+    text-align:center;
+    border-top:3px solid #1E3A8A;
+}}
+.gs-card.danger{{ border-top-color:#dc2626; background:#fef2f2; }}
+.gs-card.success{{ border-top-color:#16a34a; background:#f0fdf4; }}
+.gs-card.warn{{ border-top-color:#d97706; background:#fffbeb; }}
+.gs-label{{ font-size:10px; color:#64748b; margin-bottom:4px; }}
+.gs-value{{ font-size:15px; font-weight:700; color:#1e293b; }}
+.gs-card.danger .gs-value{{ color:#dc2626; }}
+.gs-card.success .gs-value{{ color:#16a34a; }}
+
+/* ===== Order Blocks ===== */
+.order-block{{
+    border:1px solid #e2e8f0;
+    border-radius:12px;
+    padding:18px;
+    margin-bottom:20px;
+    page-break-inside:avoid;
+}}
+.order-header{{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:14px;
+}}
+.order-id{{ font-size:15px; font-weight:700; color:#1E3A8A; }}
+.order-status{{
+    color:#fff;
+    padding:3px 14px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+}}
+.info-grid{{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-bottom:14px;
+    background:#f8fafc;
+    border-radius:8px;
+    padding:12px;
+}}
+.info-item{{ display:flex; flex-direction:column; }}
+.info-label{{ font-size:10px; color:#94a3b8; margin-bottom:2px; }}
+.info-value{{ font-size:12px; font-weight:600; color:#1e293b; }}
+
+/* ===== Progress ===== */
+.progress-section{{ margin-bottom:14px; }}
+.progress-label{{
+    display:flex;
+    justify-content:space-between;
+    font-size:11px;
+    color:#475569;
+    margin-bottom:5px;
+}}
+.progress-bar-bg{{
+    background:#e2e8f0;
+    border-radius:10px;
+    height:10px;
+    overflow:hidden;
+}}
+.progress-bar-fill{{
+    height:100%;
+    border-radius:10px;
+    transition:width 0.3s;
+}}
+
+/* ===== Tables ===== */
+.section-title{{
+    font-size:12px;
+    font-weight:700;
+    color:#1E3A8A;
+    margin:12px 0 6px 0;
+    padding-right:8px;
+    border-right:3px solid #FBBF24;
+}}
+.data-table{{
+    width:100%;
+    border-collapse:collapse;
+    font-size:11px;
+    margin-bottom:10px;
+}}
+.data-table th{{
+    background:#1E3A8A;
+    color:#fff;
+    padding:7px 8px;
+    text-align:center;
+    font-weight:600;
+}}
+.data-table td{{
+    padding:6px 8px;
+    text-align:center;
+    border-bottom:1px solid #f1f5f9;
+}}
+.data-table tr:nth-child(even){{ background:#f8fafc; }}
+.data-table tr:hover{{ background:#eff6ff; }}
+
+/* ===== Order Summary ===== */
+.order-summary{{
+    display:flex;
+    gap:10px;
+    margin-top:12px;
+    flex-wrap:wrap;
+}}
+.summary-box{{
+    flex:1;
+    min-width:120px;
+    border:2px solid #e2e8f0;
+    border-radius:8px;
+    padding:10px;
+    text-align:center;
+}}
+.summary-label{{ font-size:10px; color:#64748b; margin-bottom:4px; }}
+.summary-value{{ font-size:14px; font-weight:700; }}
+
+/* ===== Final Balance ===== */
+.final-balance{{
+    background:#1E3A8A;
+    color:#fff;
+    border-radius:12px;
+    padding:20px 24px;
+    margin-top:24px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+}}
+.final-balance h3{{ font-size:16px; margin-bottom:2px; }}
+.final-balance .amount{{ font-size:28px; font-weight:800; }}
+.final-balance .amount.zero{{ color:#86efac; }}
+.final-balance .amount.owed{{ color:#fca5a5; }}
+.final-stat{{ text-align:center; }}
+.final-stat .val{{ font-size:16px; font-weight:700; }}
+.final-stat .lbl{{ font-size:10px; opacity:0.75; }}
+
+/* ===== Footer ===== */
+.footer{{
+    margin-top:24px;
+    border-top:1px solid #e2e8f0;
+    padding-top:12px;
+    display:flex;
+    justify-content:space-between;
+    font-size:10px;
+    color:#94a3b8;
+}}
+.signature-area{{
+    margin-top:40px;
+    display:flex;
+    justify-content:space-between;
+    padding:0 30px;
+}}
+.sig-box{{
+    text-align:center;
+    width:160px;
+}}
+.sig-line{{
+    border-top:1px solid #94a3b8;
+    margin-bottom:6px;
+}}
+.sig-label{{ font-size:11px; color:#64748b; }}
+
+@media print{{
+    body{{ background:#fff; }}
+    .page{{ padding:15px; max-width:100%; }}
+    .order-block{{ page-break-inside:avoid; }}
+}}
+</style>
+</head>
+<body>
+<div class="page">
+
+    <!-- رأس الصفحة -->
+    <div class="factory-header">
+        <div style="display:flex;align-items:center;gap:14px;">
+            <div class="factory-logo">🏭</div>
+            <div class="factory-info">
+                <h1>{FACTORY_NAME}</h1>
+                <p>{FACTORY_ADDRESS}</p>
+                <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
+            </div>
+        </div>
+        <div class="doc-meta">
+            <div class="doc-title">كشف حساب عميل</div>
+            <p>تاريخ الإصدار: {today_str}</p>
+            <p>الفترة: {date_from_str} — {date_to_str}</p>
+        </div>
+    </div>
+
+    <!-- بيانات العميل -->
+    <div class="customer-card">
+        <div>
+            <h2>👤 {customer_name}</h2>
+            <div class="meta">س.ت: {cr_number} &nbsp;|&nbsp; الرقم الضريبي: {tax_number}</div>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div class="period">
+                <span>من</span>
+                <strong>{date_from_str}</strong>
+            </div>
+            <div class="period">
+                <span>إلى</span>
+                <strong>{date_to_str}</strong>
+            </div>
+            <div class="period">
+                <span>عدد الطلبيات</span>
+                <strong>{len(orders_data)}</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- الملخص الإجمالي العلوي -->
+    <div class="grand-summary">
+        <div class="gs-card">
+            <div class="gs-label">إجمالي قيمة العقود</div>
+            <div class="gs-value">{grand_contract:,.2f} ر</div>
+        </div>
+        <div class="gs-card warn">
+            <div class="gs-label">إجمالي الفواتير المستحقة</div>
+            <div class="gs-value">{grand_invoiced:,.2f} ر</div>
+        </div>
+        <div class="gs-card success">
+            <div class="gs-label">إجمالي المبالغ المحصّلة</div>
+            <div class="gs-value">{grand_paid:,.2f} ر</div>
+        </div>
+        <div class="gs-card danger">
+            <div class="gs-label">🔴 الرصيد المستحق</div>
+            <div class="gs-value">{grand_balance:,.2f} ر</div>
+        </div>
+    </div>
+
+    <!-- تفاصيل الطلبيات -->
+    {orders_html}
+
+    <!-- الرصيد النهائي -->
+    <div class="final-balance">
+        <div>
+            <h3>📊 الرصيد الإجمالي النهائي</h3>
+            <div class="amount {'zero' if grand_balance <= 0 else 'owed'}">{grand_balance:,.2f} ريال</div>
+        </div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;">
+            <div class="final-stat">
+                <div class="val">{grand_tanks}</div>
+                <div class="lbl">إجمالي الخزانات المطلوبة</div>
+            </div>
+            <div class="final-stat">
+                <div class="val">{grand_delivered}</div>
+                <div class="lbl">الخزانات المسلّمة</div>
+            </div>
+            <div class="final-stat">
+                <div class="val">{grand_tanks - grand_delivered}</div>
+                <div class="lbl">المتبقي للتسليم</div>
+            </div>
+            <div class="final-stat">
+                <div class="val">{grand_paid:,.2f} ر</div>
+                <div class="lbl">إجمالي المحصّل</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- منطقة التوقيعات -->
+    <div class="signature-area">
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">توقيع المحاسب</div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">توقيع المدير المالي</div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">ختم الشركة</div>
+        </div>
+    </div>
+
+    <!-- تذييل الصفحة -->
+    <div class="footer">
+        <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+        <span>تم الإنشاء بواسطة نظام ERP v7.0 — {today_str}</span>
+    </div>
+
+</div>
+</body>
+</html>"""
+    return html
+
+
 st.sidebar.title("🛠️ الأقسام والعمليات")
 menu = st.sidebar.radio("انتقل إلى:", [
     "📊 لوحة التحكم",
@@ -647,10 +1183,15 @@ elif menu == "📦 الطلبيات":
 
     # تبويب 5: كشف حساب عميل التفصيلي
     with tabs[4]:
-        cdf3 = run_query("SELECT id,trade_name FROM customers ORDER BY trade_name")
+        cdf3 = run_query("SELECT id,trade_name,cr_number,tax_number FROM customers ORDER BY trade_name")
         if not cdf3.empty:
             sel_c3 = st.selectbox("اختر العميل:", cdf3['trade_name'].tolist(), key="sc3")
             cid3 = int(cdf3[cdf3['trade_name']==sel_c3]['id'].iloc[0])
+            cust_row3 = cdf3[cdf3['trade_name']==sel_c3].iloc[0]
+            cust_info3 = {
+                'cr_number':  str(cust_row3.get('cr_number','') or '—'),
+                'tax_number': str(cust_row3.get('tax_number','') or '—'),
+            }
             d1,d2 = st.columns(2)
             ds = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="sds")
             de = d2.date_input("إلى:", datetime.date.today(), key="sde")
@@ -662,132 +1203,407 @@ elif menu == "📦 الطلبيات":
                 if orders_stmt.empty:
                     st.info("لا توجد طلبيات في هذه الفترة.")
                 else:
-                    render_header()
-                    st.markdown(f"<h2 style='text-align:center;color:#1E3A8A;'>كشف حساب تفصيلي — {sel_c3}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align:center;'>الفترة: {ds} إلى {de}</p>", unsafe_allow_html=True)
-                    st.markdown("---")
-
+                    # ---- جمع بيانات كل طلبية ----
+                    orders_data_html = []
                     grand_inv=0.0; grand_paid=0.0; grand_del=0
 
                     for _, ord_row in orders_stmt.iterrows():
                         oid_s = ord_row['order_id']
-                        st.markdown(f"### 📦 طلبية: `{oid_s}`")
-                        c1,c2,c3,c4 = st.columns(4)
-                        c1.metric("الاستخدام", str(ord_row['tank_use']))
-                        c2.metric("السعة", str(ord_row['tank_capacity'] or "—"))
-                        c3.metric("النوع", str(ord_row['tank_type']))
-                        c4.metric("الحالة", str(ord_row['status']))
-                        c5,c6,c7,c8 = st.columns(4)
-                        c5.metric("الكمية المطلوبة", f"{int(ord_row['qty'])} خزان")
-                        c6.metric("قيمة العقد", f"{float(ord_row['total_price']):,.2f} ر")
-                        c7.metric("الدفعة المقدمة", f"{float(ord_row['advance_paid']):,.2f} ر")
-                        c8.metric("التاريخ", str(ord_row['order_date']))
 
-                        # التسليمات
                         del_df = run_query("SELECT delivery_id,delivery_date,shipped_qty,driver_name,car_plate FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_date",{"oid":oid_s})
                         total_del = int(del_df['shipped_qty'].sum()) if not del_df.empty else 0
-                        rem_tanks = int(ord_row['qty']) - total_del
-                        st.write("**🚚 سجل التسليمات:**")
-                        if not del_df.empty:
-                            st.dataframe(del_df.rename(columns={'delivery_id':'رقم التسليم','delivery_date':'التاريخ','shipped_qty':'الكمية','driver_name':'السائق','car_plate':'اللوحة'}),use_container_width=True)
-                        else:
-                            st.info("لم يتم تسليم خزانات بعد.")
-                        da,db,dc = st.columns(3)
-                        da.metric("إجمالي المسلّم", f"{total_del} خزان")
-                        db.metric("المتبقي للتسليم", f"{rem_tanks} خزان")
-                        pct = int(total_del/int(ord_row['qty'])*100) if int(ord_row['qty'])>0 else 0
-                        dc.metric("نسبة الإنجاز", f"{pct}%")
 
-                        # الفواتير
                         inv_s = run_query("SELECT invoice_id,invoice_date,grand_total,advance_deducted,net_required FROM sales_invoices WHERE order_id=:oid ORDER BY invoice_date",{"oid":oid_s})
                         total_inv_ord = float(inv_s['net_required'].sum()) if not inv_s.empty else 0.0
-                        st.write("**📄 الفواتير:**")
-                        if not inv_s.empty:
-                            st.dataframe(inv_s.rename(columns={'invoice_id':'رقم الفاتورة','invoice_date':'التاريخ','grand_total':'الإجمالي','advance_deducted':'المقدم المخصوم','net_required':'المستحق'}),use_container_width=True)
-                        else:
-                            st.info("لا توجد فواتير.")
 
-                        # الدفعات
                         pay_s = run_query("SELECT payment_date,amount,payment_type,bank_name FROM customer_payments WHERE order_id=:oid AND customer_id=:cid ORDER BY payment_date",{"oid":oid_s,"cid":cid3})
                         total_paid_ord = float(pay_s['amount'].sum()) if not pay_s.empty else 0.0
-                        st.write("**💵 الدفعات المستلمة:**")
-                        if not pay_s.empty:
-                            st.dataframe(pay_s.rename(columns={'payment_date':'التاريخ','amount':'المبلغ','payment_type':'طريقة الدفع','bank_name':'البنك'}),use_container_width=True)
-                        else:
-                            st.info("لا توجد دفعات.")
 
-                        bal = total_inv_ord - total_paid_ord
-                        p1,p2,p3 = st.columns(3)
-                        p1.metric("المستحق بالفواتير", f"{total_inv_ord:,.2f} ر")
-                        p2.metric("إجمالي المدفوع", f"{total_paid_ord:,.2f} ر")
-                        p3.metric("🔴 الرصيد المتبقي", f"{bal:,.2f} ر")
                         grand_inv+=total_inv_ord; grand_paid+=total_paid_ord; grand_del+=total_del
-                        st.markdown("---")
 
-                    st.markdown("## 📊 الملخص الإجمالي")
+                        orders_data_html.append({
+                            'order_id':         oid_s,
+                            'order_date':        str(ord_row['order_date']),
+                            'tank_use':          str(ord_row['tank_use']),
+                            'tank_capacity':     str(ord_row['tank_capacity'] or '—'),
+                            'tank_type':         str(ord_row['tank_type']),
+                            'status':            str(ord_row['status']),
+                            'qty':               int(ord_row['qty']),
+                            'unit_price':        float(ord_row['unit_price']),
+                            'total_price':       float(ord_row['total_price']),
+                            'advance_paid':      float(ord_row['advance_paid']),
+                            'remaining_balance': float(ord_row['remaining_balance']),
+                            'total_delivered':   total_del,
+                            'total_invoiced':    total_inv_ord,
+                            'total_paid':        total_paid_ord,
+                            'deliveries': del_df.to_dict('records') if not del_df.empty else [],
+                            'invoices':   inv_s.to_dict('records')  if not inv_s.empty else [],
+                            'payments':   pay_s.to_dict('records')  if not pay_s.empty else [],
+                        })
+
+                    # ---- عرض ملخص في Streamlit ----
+                    render_header()
+                    st.markdown(f"<h2 style='text-align:center;color:#1E3A8A;'>كشف حساب تفصيلي — {sel_c3}</h2>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='text-align:center;color:#64748b;'>الفترة: {ds} إلى {de}</p>", unsafe_allow_html=True)
+                    st.markdown("---")
                     g1,g2,g3,g4 = st.columns(4)
                     g1.metric("إجمالي الفواتير", f"{grand_inv:,.2f} ر")
                     g2.metric("إجمالي المدفوع", f"{grand_paid:,.2f} ر")
                     g3.metric("🔴 الرصيد الكلي", f"{grand_inv-grand_paid:,.2f} ر")
                     g4.metric("إجمالي الخزانات المسلمة", f"{grand_del} خزان")
+
+                    # ---- توليد HTML وزر التنزيل ----
+                    html_output = generate_customer_statement_html(
+                        customer_name  = sel_c3,
+                        customer_info  = cust_info3,
+                        date_from      = ds,
+                        date_to        = de,
+                        orders_data    = orders_data_html
+                    )
+                    st.markdown("---")
+                    col_dl1, col_dl2 = st.columns(2)
                     summary = pd.DataFrame([{"العميل":sel_c3,"الفترة":f"{ds} إلى {de}","إجمالي الفواتير":grand_inv,"إجمالي المدفوع":grand_paid,"الرصيد":grand_inv-grand_paid,"الخزانات المسلمة":grand_del}])
-                    st.download_button("⬇️ تنزيل ملخص كشف الحساب",df_to_csv(summary),f"stmt_{sel_c3}.csv","text/csv")
+                    col_dl1.download_button("⬇️ تنزيل CSV", df_to_csv(summary), f"stmt_{sel_c3}.csv", "text/csv")
+                    col_dl2.download_button(
+                        label="🖨️ تنزيل كشف الحساب للطباعة (HTML)",
+                        data=html_output.encode('utf-8'),
+                        file_name=f"customer_statement_{sel_c3}.html",
+                        mime="text/html; charset=utf-8",
+                        help="افتح الملف في المتصفح ثم اضغط Ctrl+P لطباعته أو حفظه PDF"
+                    )
+                    st.caption("💡 بعد التنزيل: افتح الملف في Chrome أو Safari ثم اضغط Ctrl+P أو Cmd+P لطباعته أو حفظه كـ PDF")
 
 # ==========================================
 # [3] التصنيع
 # ==========================================
 elif menu == "🏭 التصنيع":
     st.subheader("🏭 إدارة صالة الإنتاج")
-    odf = run_query("SELECT o.order_id,c.trade_name,o.qty,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
+
+    # --- session state للتصنيع ---
+    if 'prod_stage' not in st.session_state: st.session_state.prod_stage = 'new'        # new | open | closing
+    if 'prod_shift_id' not in st.session_state: st.session_state.prod_shift_id = None
+    if 'prod_oid' not in st.session_state: st.session_state.prod_oid = None
+    if 'prod_planned' not in st.session_state: st.session_state.prod_planned = 0
+    if 'prod_calc' not in st.session_state: st.session_state.prod_calc = {}
+    if 'prod_tank_actuals' not in st.session_state: st.session_state.prod_tank_actuals = {}
+    if 'prod_tank_serials' not in st.session_state: st.session_state.prod_tank_serials = []
+    if 'prod_supervisor' not in st.session_state: st.session_state.prod_supervisor = ''
+
+    MAT_MAP_KEYS = {
+        "راتنج":       "راتنج كميائي صنف اول للديزل",
+        "ألياف Mat":   "ألياف (Mat 450)",
+        "روفرز":       "روفرز (Roving 600)",
+        "تيسو":        "تيسو (Tissue)",
+        "مصلد":        "مصلد (Catalyst)",
+        "كالسيوم":     "كربونات الكالسيوم",
+        "سيليكا":      "سيليكا (Silica)",
+    }
+
+    def make_dispatch_html(oid, order_row, calc_dict, planned_qty, shift_id, supervisor, title="أمر صرف مواد خام"):
+        today_str = datetime.date.today().strftime("%Y/%m/%d")
+        rows = ""
+        total_items = len(calc_dict)
+        for i,(mat,qty) in enumerate(calc_dict.items()):
+            bg = "#f8fafc" if i%2==0 else "#fff"
+            rows += f"""<tr style="background:{bg};">
+                <td style="padding:9px 12px;border:1px solid #e2e8f0;">{mat}</td>
+                <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{qty:,.3f}</td>
+                <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:center;">كجم / م²</td>
+            </tr>"""
+        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+.info-box{{background:#f1f5f9;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:18px;}}
+.info-item span{{display:block;}} .info-item .lbl{{font-size:10px;color:#94a3b8;}} .info-item .val{{font-size:13px;font-weight:700;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:12px;}}
+.footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:40px;}}
+.sig-box{{text-align:center;width:160px;}} .sig-line{{border-top:1px solid #94a3b8;margin-bottom:6px;}} .sig-lbl{{font-size:11px;color:#64748b;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div style="text-align:left;"><div class="badge">{title}</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str}</p><p style="color:#64748b;font-size:11px;">رقم الوردية: #{shift_id}</p></div>
+</div>
+<div class="info-box">
+  <div class="info-item"><span class="lbl">رقم الطلبية</span><span class="val">{oid}</span></div>
+  <div class="info-item"><span class="lbl">عدد الخزانات المخططة</span><span class="val">{planned_qty} خزان</span></div>
+  <div class="info-item"><span class="lbl">المشرف</span><span class="val">{supervisor or '—'}</span></div>
+  <div class="info-item"><span class="lbl">تاريخ الوردية</span><span class="val">{today_str}</span></div>
+</div>
+<table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{rows}</tbody></table>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">أمين المخزن</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">المشرف</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">مدير الإنتاج</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+</body></html>"""
+
+    def make_comparison_html(oid, shift_id, supervisor, planned_qty, actual_qty, calc_dict, actual_totals, return_items, extra_items):
+        today_str = datetime.date.today().strftime("%Y/%m/%d")
+        rows = ""
+        for mat, planned_q in calc_dict.items():
+            actual_q = actual_totals.get(mat, 0.0)
+            diff = actual_q - planned_q
+            diff_color = "#dc2626" if diff > 0 else ("#16a34a" if diff < 0 else "#1e293b")
+            diff_txt = f"+{diff:,.3f}" if diff > 0 else f"{diff:,.3f}"
+            status = "زيادة استهلاك 🔴" if diff > 0 else ("وفر 🟢" if diff < 0 else "مطابق ✅")
+            rows += f"""<tr>
+              <td style="padding:8px 10px;border:1px solid #e2e8f0;">{mat}</td>
+              <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{planned_q:,.3f}</td>
+              <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{actual_q:,.3f}</td>
+              <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:{diff_color};font-weight:700;">{diff_txt}</td>
+              <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{status}</td>
+            </tr>"""
+        ret_rows = ""
+        for m,q in return_items.items():
+            ret_rows += f'<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;">{m}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;font-weight:700;">{q:,.3f}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">كجم/م²</td></tr>'
+        ext_rows = ""
+        for m,q in extra_items.items():
+            ext_rows += f'<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;">{m}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{q:,.3f}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">كجم/م²</td></tr>'
+        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+.section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:18px 0 8px 0;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+  <div style="text-align:left;"><div class="badge">تقرير مقارنة المواد — إنهاء الوردية</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str} | وردية: #{shift_id}</p><p style="color:#64748b;font-size:11px;">طلبية: {oid} | مشرف: {supervisor or '—'} | مخطط: {planned_qty} | فعلي: {actual_qty}</p></div>
+</div>
+<div class="section-title">📊 جدول المقارنة: المصروف مقابل المستهلك</div>
+<table><thead><tr><th>المادة</th><th>المصروف (مخطط)</th><th>المستهلك (فعلي)</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>{rows}</tbody></table>
+{"<div class='section-title' style='color:#16a34a;'>🟢 أمر ارتجاع للمخزن</div><table><thead><tr><th>المادة</th><th>الكمية المرتجعة</th><th>الوحدة</th></tr></thead><tbody>"+ret_rows+"</tbody></table>" if ret_rows else ""}
+{"<div class='section-title' style='color:#dc2626;'>🔴 أمر صرف إضافي من المخزن</div><table><thead><tr><th>المادة</th><th>الكمية الإضافية</th><th>الوحدة</th></tr></thead><tbody>"+ext_rows+"</tbody></table>" if ext_rows else ""}
+<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+</body></html>"""
+
+    odf = run_query("SELECT o.order_id,c.trade_name,o.qty,o.tank_use,o.tank_capacity,o.tank_type,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
     if odf.empty:
         st.info("لا توجد طلبيات جارية.")
     else:
-        opts = [f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان" for _,r in odf.iterrows()]
-        sel = st.selectbox("اختر الطلبية:", opts)
-        oid = sel.split(" | ")[0]
-        row = odf[odf['order_id']==oid].iloc[0]
-        tanks_today = st.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2)
-        calc = {
-            "راتنج": tanks_today*float(row['resin_exp'] or 0),
-            "ألياف Mat": tanks_today*float(row['mat_exp'] or 0),
-            "روفرز": tanks_today*float(row['roving_exp'] or 0),
-            "تيسو": tanks_today*float(row['tissue_exp'] or 0),
-            "مصلد": tanks_today*float(row['catalyst_exp'] or 0),
-            "كالسيوم": tanks_today*float(row['calcium_exp'] or 0),
-            "سيليكا": tanks_today*float(row['silica_exp'] or 0),
-        }
-        render_header()
-        st.markdown(f"<h3 style='text-align:center;'>أمر صرف مواد خام — {oid} — {datetime.date.today()}</h3>", unsafe_allow_html=True)
-        disp_df = pd.DataFrame([{"المادة":k,"الكمية":v,"الوحدة":"كجم/م²"} for k,v in calc.items()])
-        st.dataframe(disp_df, use_container_width=True)
-        st.download_button("⬇️ تنزيل أمر الصرف",df_to_csv(disp_df),f"dispatch_{oid}.csv","text/csv")
-        if st.button("🎬 بدء الوردية وخصم المواد"):
-            mat_map = {"راتنج كميائي صنف اول للديزل":calc["راتنج"],"ألياف (Mat 450)":calc["ألياف Mat"],"روفرز (Roving 600)":calc["روفرز"],"تيسو (Tissue)":calc["تيسو"],"مصلد (Catalyst)":calc["مصلد"],"كربونات الكالسيوم":calc["كالسيوم"],"سيليكا (Silica)":calc["سيليكا"]}
-            for mat,qty in mat_map.items():
-                run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m",{"q":qty,"m":mat})
-            if run_write("INSERT INTO production_days(order_id,planned_qty,date) VALUES(:oid,:pq,:d)",{"oid":oid,"pq":tanks_today,"d":datetime.date.today()}):
-                st.success("✅ تم فتح الوردية وخصم المواد!")
-        st.write("---")
-        st.markdown("### 🔒 إنهاء الوردية")
-        actual_qty = st.number_input("العدد الفعلي:", min_value=0, value=int(tanks_today))
-        supervisor = st.text_input("المشرف:")
-        if st.button("🔒 إنهاء الوردية"):
-            ls = run_query("SELECT id FROM production_days WHERE order_id=:oid ORDER BY id DESC LIMIT 1",{"oid":oid})
-            if not ls.empty:
-                sid = int(ls['id'].iloc[0])
-                run_write("UPDATE production_days SET actual_qty=:aq,status='مغلق' WHERE id=:sid",{"aq":actual_qty,"sid":sid})
-                for i in range(1, actual_qty+1):
+        # ===== مرحلة 1: بدء وردية جديدة =====
+        if st.session_state.prod_stage == 'new':
+            st.markdown("### 🟢 بدء وردية جديدة")
+            opts = [f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان" for _,r in odf.iterrows()]
+            sel = st.selectbox("اختر الطلبية:", opts, key="prod_sel")
+            oid = sel.split(" | ")[0]
+            row = odf[odf['order_id']==oid].iloc[0]
+            c1,c2 = st.columns(2)
+            tanks_today = c1.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2, key="prod_planned_n")
+            supervisor_inp = c2.text_input("اسم المشرف:", key="prod_sup_inp")
+
+            resin_p  = float(row['resin_exp'] or 0)
+            mat_p    = float(row['mat_exp'] or 0)
+            roving_p = float(row['roving_exp'] or 0)
+            tissue_p = float(row['tissue_exp'] or 0)
+            cat_p    = float(row['catalyst_exp'] or 0)
+            cal_p    = float(row['calcium_exp'] or 0)
+            sil_p    = float(row['silica_exp'] or 0)
+
+            calc = {
+                "راتنج":     tanks_today * resin_p,
+                "ألياف Mat": tanks_today * mat_p,
+                "روفرز":     tanks_today * roving_p,
+                "تيسو":      tanks_today * tissue_p,
+                "مصلد":      tanks_today * cat_p,
+                "كالسيوم":   tanks_today * cal_p,
+                "سيليكا":    tanks_today * sil_p,
+            }
+
+            st.markdown("#### 📋 أمر صرف المواد")
+            disp_df = pd.DataFrame([{"المادة":k,"الكمية المطلوبة":f"{v:,.3f}","الوحدة":"كجم/م²"} for k,v in calc.items()])
+            st.dataframe(disp_df, use_container_width=True, hide_index=True)
+
+            dispatch_html = make_dispatch_html(oid, row, calc, tanks_today, "مؤقت", supervisor_inp)
+            st.download_button("🖨️ طباعة أمر الصرف (HTML)", dispatch_html.encode('utf-8'), f"dispatch_{oid}_{datetime.date.today()}.html", "text/html; charset=utf-8", key="dl_dispatch_pre")
+            st.caption("💡 افتح الملف في المتصفح ثم Ctrl+P للطباعة")
+
+            if st.button("🎬 بدء الوردية وصرف المواد من المخزن", type="primary"):
+                if not supervisor_inp:
+                    st.error("أدخل اسم المشرف!")
+                else:
+                    mat_map_full = {
+                        "راتنج كميائي صنف اول للديزل": calc["راتنج"],
+                        "ألياف (Mat 450)":              calc["ألياف Mat"],
+                        "روفرز (Roving 600)":           calc["روفرز"],
+                        "تيسو (Tissue)":                calc["تيسو"],
+                        "مصلد (Catalyst)":              calc["مصلد"],
+                        "كربونات الكالسيوم":            calc["كالسيوم"],
+                        "سيليكا (Silica)":              calc["سيليكا"],
+                    }
+                    for mat, qty in mat_map_full.items():
+                        if qty > 0:
+                            run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":qty,"m":mat})
+                    ok_s = run_write("INSERT INTO production_days(order_id,planned_qty,date) VALUES(:oid,:pq,:d)", {"oid":oid,"pq":tanks_today,"d":datetime.date.today()})
+                    if ok_s:
+                        sid_row = run_query("SELECT id FROM production_days WHERE order_id=:oid ORDER BY id DESC LIMIT 1", {"oid":oid})
+                        sid = int(sid_row['id'].iloc[0])
+                        st.session_state.prod_stage = 'open'
+                        st.session_state.prod_shift_id = sid
+                        st.session_state.prod_oid = oid
+                        st.session_state.prod_planned = tanks_today
+                        st.session_state.prod_calc = calc
+                        st.session_state.prod_supervisor = supervisor_inp
+                        st.session_state.prod_tank_actuals = {}
+                        st.session_state.prod_tank_serials = []
+                        st.success(f"✅ تم فتح الوردية #{sid} وصرف المواد!")
+                        st.rerun()
+
+        # ===== مرحلة 2: الوردية مفتوحة - إنهاء الوردية =====
+        elif st.session_state.prod_stage == 'open':
+            sid       = st.session_state.prod_shift_id
+            oid       = st.session_state.prod_oid
+            planned   = st.session_state.prod_planned
+            calc      = st.session_state.prod_calc
+            supervisor= st.session_state.prod_supervisor
+            row       = odf[odf['order_id']==oid].iloc[0] if oid in odf['order_id'].values else odf.iloc[0]
+
+            st.info(f"🟡 الوردية #{sid} مفتوحة | الطلبية: **{oid}** | مخطط: **{planned}** خزان | مشرف: **{supervisor}**")
+
+            # طباعة أمر الصرف الرسمي
+            dispatch_html = make_dispatch_html(oid, row, calc, planned, sid, supervisor)
+            st.download_button("🖨️ طباعة أمر الصرف الرسمي (HTML)", dispatch_html.encode('utf-8'), f"dispatch_{oid}_shift{sid}.html", "text/html; charset=utf-8", key="dl_dispatch_official")
+            st.markdown("---")
+
+            st.markdown("### 🔒 إنهاء الوردية — إدخال الاستهلاك الفعلي خزان بخزان")
+
+            actual_qty_inp = st.number_input("عدد الخزانات المنتجة فعلياً:", min_value=1, value=planned, key="actual_qty_inp")
+
+            st.markdown("#### أدخل الاستهلاك الفعلي لكل خزان:")
+            tank_actuals = {}
+            cols_tanks = st.columns(min(actual_qty_inp, 3))
+            for i in range(1, actual_qty_inp+1):
+                col = cols_tanks[(i-1) % min(actual_qty_inp, 3)]
+                with col:
+                    st.markdown(f"**خزان {i}**")
+                    t_data = {}
+                    t_data['راتنج']     = st.number_input(f"راتنج {i} (كجم):",    min_value=0.0, value=float(row['resin_exp'] or 0),    key=f"t_res_{i}")
+                    t_data['ألياف Mat'] = st.number_input(f"ألياف Mat {i} (كجم):", min_value=0.0, value=float(row['mat_exp'] or 0),     key=f"t_mat_{i}")
+                    t_data['روفرز']     = st.number_input(f"روفرز {i} (كجم):",    min_value=0.0, value=float(row['roving_exp'] or 0),   key=f"t_rov_{i}")
+                    t_data['تيسو']      = st.number_input(f"تيسو {i} (م²):",       min_value=0.0, value=float(row['tissue_exp'] or 0),  key=f"t_tis_{i}")
+                    t_data['مصلد']      = st.number_input(f"مصلد {i} (كجم):",     min_value=0.0, value=float(row['catalyst_exp'] or 0),key=f"t_cat_{i}")
+                    t_data['كالسيوم']   = st.number_input(f"كالسيوم {i} (كجم):",  min_value=0.0, value=float(row['calcium_exp'] or 0), key=f"t_cal_{i}")
+                    t_data['سيليكا']    = st.number_input(f"سيليكا {i} (كجم):",   min_value=0.0, value=float(row['silica_exp'] or 0),  key=f"t_sil_{i}")
+                    tank_actuals[i] = t_data
+
+            if st.button("✅ حساب المقارنة وإنهاء الوردية", type="primary"):
+                # حساب الإجمالي الفعلي
+                actual_totals = {mat: sum(tank_actuals[i].get(mat,0) for i in range(1,actual_qty_inp+1)) for mat in calc.keys()}
+
+                # تحديد الفروق
+                return_items = {}
+                extra_items  = {}
+                for mat, planned_q in calc.items():
+                    actual_q = actual_totals.get(mat, 0.0)
+                    diff = actual_q - planned_q
+                    if diff < -0.001:   # وفر → ارتجاع للمخزن
+                        return_items[mat] = abs(diff)
+                    elif diff > 0.001:  # زيادة → صرف إضافي
+                        extra_items[mat] = diff
+
+                # تنفيذ الارتجاع
+                inv_mat_map = {v:k for k,v in MAT_MAP_KEYS.items()}
+                for mat_short, qty in return_items.items():
+                    mat_full = MAT_MAP_KEYS.get(mat_short, mat_short)
+                    run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m", {"q":qty,"m":mat_full})
+
+                # تنفيذ الصرف الإضافي
+                for mat_short, qty in extra_items.items():
+                    mat_full = MAT_MAP_KEYS.get(mat_short, mat_short)
+                    run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":qty,"m":mat_full})
+
+                # إغلاق الوردية وإنشاء الأرقام التسلسلية
+                run_write("UPDATE production_days SET actual_qty=:aq,status='مغلق' WHERE id=:sid", {"aq":actual_qty_inp,"sid":sid})
+                serials = []
+                for i in range(1, actual_qty_inp+1):
                     sn = f"SUBUL-SN-{datetime.date.today().year}-{random.randint(10000,99999)}-{i:02d}"
-                    run_write("INSERT INTO production_tanks(serial_number,order_id,shift_id,prod_date,supervisor) VALUES(:sn,:oid,:sid,:pd,:sup)",{"sn":sn,"oid":oid,"sid":sid,"pd":datetime.date.today(),"sup":supervisor})
-                    st.markdown(f"🔹 خزان {i}: `{sn}`")
-                dev = (actual_qty-tanks_today)*float(row['resin_exp'] or 0)
-                if dev > 0:
-                    run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name='راتنج كميائي صنف اول للديزل'",{"q":dev})
-                    st.warning(f"⚠️ زيادة استهلاك: {dev:.2f} كجم")
-                elif dev < 0:
-                    run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name='راتنج كميائي صنف اول للديزل'",{"q":abs(dev)})
-                    st.success(f"🟢 وفر: {abs(dev):.2f} كجم أعيدت للمخزن")
-                st.success(f"✅ تم إغلاق الوردية — {actual_qty} خزان!")
+                    run_write("INSERT INTO production_tanks(serial_number,order_id,shift_id,prod_date,supervisor) VALUES(:sn,:oid,:sid,:pd,:sup)",
+                              {"sn":sn,"oid":oid,"sid":sid,"pd":datetime.date.today(),"sup":supervisor})
+                    serials.append(sn)
+
+                # حفظ النتائج في session state للعرض
+                st.session_state.prod_stage         = 'closing'
+                st.session_state.prod_tank_actuals  = actual_totals
+                st.session_state.prod_tank_serials  = serials
+                st.session_state._return_items      = return_items
+                st.session_state._extra_items       = extra_items
+                st.session_state._actual_qty_done   = actual_qty_inp
+                st.rerun()
+
+        # ===== مرحلة 3: عرض النتائج + أوامر HTML + بدء جديد =====
+        elif st.session_state.prod_stage == 'closing':
+            sid            = st.session_state.prod_shift_id
+            oid            = st.session_state.prod_oid
+            planned        = st.session_state.prod_planned
+            calc           = st.session_state.prod_calc
+            supervisor     = st.session_state.prod_supervisor
+            actual_totals  = st.session_state.prod_tank_actuals
+            serials        = st.session_state.prod_tank_serials
+            return_items   = st.session_state.get('_return_items', {})
+            extra_items    = st.session_state.get('_extra_items', {})
+            actual_qty_done= st.session_state.get('_actual_qty_done', planned)
+            row            = odf[odf['order_id']==oid].iloc[0] if oid in odf['order_id'].values else odf.iloc[0]
+
+            st.success(f"✅ تم إغلاق الوردية #{sid} بنجاح — {actual_qty_done} خزان")
+
+            # الأرقام التسلسلية
+            st.markdown("#### 🔢 الأرقام التسلسلية للخزانات المنتجة")
+            sn_cols = st.columns(3)
+            for i,sn in enumerate(serials):
+                sn_cols[i%3].code(sn)
+
+            # جدول المقارنة
+            st.markdown("#### 📊 جدول مقارنة المواد")
+            cmp_rows = []
+            for mat, planned_q in calc.items():
+                actual_q = actual_totals.get(mat, 0.0)
+                diff = actual_q - planned_q
+                cmp_rows.append({"المادة":mat,"المصروف":f"{planned_q:,.3f}","المستهلك":f"{actual_q:,.3f}","الفرق":f"{diff:+.3f}","الحالة":"زيادة 🔴" if diff>0.001 else ("وفر 🟢" if diff<-0.001 else "✅")})
+            st.dataframe(pd.DataFrame(cmp_rows), use_container_width=True, hide_index=True)
+
+            if return_items:
+                st.success(f"🟢 تم ارتجاع {len(return_items)} مادة للمخزن")
+                st.dataframe(pd.DataFrame([{"المادة":m,"الكمية المرتجعة":f"{q:,.3f}"} for m,q in return_items.items()]), use_container_width=True, hide_index=True)
+
+            if extra_items:
+                st.warning(f"🔴 تم صرف {len(extra_items)} مادة إضافية من المخزن")
+                st.dataframe(pd.DataFrame([{"المادة":m,"الكمية الإضافية":f"{q:,.3f}"} for m,q in extra_items.items()]), use_container_width=True, hide_index=True)
+
+            # HTML المقارنة
+            cmp_html = make_comparison_html(oid, sid, supervisor, planned, actual_qty_done, calc, actual_totals, return_items, extra_items)
+            st.download_button("🖨️ تقرير المقارنة وأوامر الارتجاع/الصرف (HTML)", cmp_html.encode('utf-8'), f"comparison_shift{sid}.html", "text/html; charset=utf-8", key="dl_cmp")
+            st.caption("💡 يحتوي على أمر الارتجاع وأمر الصرف الإضافي — افتح في المتصفح وأطبع")
+            st.markdown("---")
+
+            if st.button("🟢 بدء وردية جديدة", type="primary"):
+                st.session_state.prod_stage = 'new'
+                st.session_state.prod_shift_id = None
+                st.session_state.prod_oid = None
+                st.session_state.prod_planned = 0
+                st.session_state.prod_calc = {}
+                st.session_state.prod_tank_actuals = {}
+                st.session_state.prod_tank_serials = []
+                st.session_state.prod_supervisor = ''
+                st.session_state.pop('_return_items', None)
+                st.session_state.pop('_extra_items', None)
+                st.session_state.pop('_actual_qty_done', None)
+                st.rerun()
 
 # ==========================================
 # [4] المشتريات والمخزن
@@ -929,41 +1745,254 @@ elif menu == "💰 الشحن والفواتير":
     st.subheader("💰 الشحن والفواتير")
     tabs = st.tabs(["🚚 أمر تسليم","📄 فاتورة ضريبية","🏦 سند قبض","🔍 استعلام فواتير"])
 
+    # ---- دوال HTML للشحن ----
+    def make_delivery_html(did, oid, customer_name, tank_use, tank_capacity, tank_type, qty, serials_list, driver_name, car_plate, driver_iqama, today_str):
+        tank_desc = f"خزان {tank_use} سعة {tank_capacity} - {tank_type}"
+        sn_rows = "".join(f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{i+1}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-family:monospace;">{sn}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td></tr>' for i,sn in enumerate(serials_list))
+        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+.info-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:18px;}}
+.info-item .lbl{{font-size:10px;color:#94a3b8;display:block;}} .info-item .val{{font-size:13px;font-weight:700;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+.sig-section{{margin-top:40px;}}
+.sig-title{{font-size:12px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:20px;}}
+.sig-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;}}
+.sig-box{{text-align:center;}}
+.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;padding-top:0;}}
+.sig-ar{{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;}}
+.sig-en{{font-size:11px;color:#64748b;}}
+.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div style="text-align:left;"><div class="badge">أمر التسليم رقم: {did}</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str}</p></div>
+</div>
+<div class="info-grid">
+  <div class="info-item"><span class="lbl">العميل</span><span class="val">{customer_name}</span></div>
+  <div class="info-item"><span class="lbl">رقم الطلبية</span><span class="val">{oid}</span></div>
+  <div class="info-item"><span class="lbl">التاريخ</span><span class="val">{today_str}</span></div>
+  <div class="info-item"><span class="lbl">نوع الخزان</span><span class="val">{tank_desc}</span></div>
+  <div class="info-item"><span class="lbl">عدد الخزانات</span><span class="val">{qty} خزان</span></div>
+  <div class="info-item"><span class="lbl">السائق</span><span class="val">{driver_name}</span></div>
+  <div class="info-item"><span class="lbl">رقم اللوحة</span><span class="val">{car_plate}</span></div>
+  <div class="info-item"><span class="lbl">رقم الإقامة</span><span class="val">{driver_iqama}</span></div>
+</div>
+<table><thead><tr><th>#</th><th>الرقم التسلسلي</th><th>وصف الخزان</th></tr></thead><tbody>{sn_rows}</tbody></table>
+<div class="sig-section">
+  <div class="sig-title">التوقيعات / Signatures</div>
+  <div class="sig-grid">
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع السائق واسمه</div><div class="sig-en">Driver Signature &amp; Name</div></div>
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع موقع الاستلام</div><div class="sig-en">Receiver's Signature</div></div>
+    <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الموقع</div><div class="sig-en">Site Stamp</div></div>
+  </div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+</body></html>"""
+
+    def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number, tank_use, tank_capacity, tank_type, qty, unit_price, serials_list, sub, vat, grand, adv_d, net, today_str):
+        tank_desc = f"خزان {tank_use} سعة {tank_capacity} - {tank_type}"
+        sn_list_html = ", ".join(serials_list) if serials_list else "—"
+        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.inv-badge{{background:#dc2626;color:#fff;padding:8px 22px;border-radius:20px;font-size:16px;font-weight:800;}}
+.parties{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:18px;}}
+.party-box{{background:#f8fafc;border-radius:10px;padding:14px;border-right:4px solid #1E3A8A;}}
+.party-box h3{{color:#1E3A8A;font-size:13px;margin-bottom:8px;}}
+.party-box p{{font-size:12px;margin:3px 0;color:#475569;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
+td{{padding:9px 10px;border:1px solid #e2e8f0;text-align:center;font-size:12px;}}
+tr:nth-child(even){{background:#f8fafc;}}
+.totals-section{{background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:18px;}}
+.total-row{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:13px;}}
+.total-row:last-child{{border-bottom:none;}}
+.net-due{{background:#1E3A8A;color:#fff;border-radius:10px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}}
+.net-due .lbl{{font-size:13px;opacity:.85;}}
+.net-due .amount{{font-size:22px;font-weight:800;}}
+.sn-box{{background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:14px;font-size:11px;color:#475569;line-height:1.8;}}
+.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div style="text-align:left;"><div class="inv-badge">فاتورة ضريبية رسمية</div><p style="margin-top:8px;color:#64748b;font-size:11px;">رقم الفاتورة: {inv_n}</p><p style="color:#64748b;font-size:11px;">التاريخ: {today_str}</p><p style="color:#64748b;font-size:11px;">أمر التسليم: #{did}</p></div>
+</div>
+<div class="parties">
+  <div class="party-box"><h3>🏭 البائع</h3><p><b>{FACTORY_NAME}</b></p><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div class="party-box"><h3>👤 المشتري</h3><p><b>{customer_name}</b></p><p>س.ت: {cr_number}</p><p>الرقم الضريبي: {tax_number}</p></div>
+</div>
+<table>
+  <thead><tr><th>الوصف</th><th>الكمية</th><th>سعر الوحدة (ر)</th><th>الإجمالي (ر)</th></tr></thead>
+  <tbody>
+    <tr><td style="text-align:right;padding-right:12px;">{tank_desc}</td><td>{qty}</td><td>{unit_price:,.2f}</td><td>{sub:,.2f}</td></tr>
+  </tbody>
+</table>
+<div class="sn-box"><b>الأرقام التسلسلية للخزانات:</b><br>{sn_list_html}</div>
+<div class="totals-section">
+  <div class="total-row"><span>المبلغ قبل الضريبة</span><span>{sub:,.2f} ر</span></div>
+  <div class="total-row"><span>ضريبة القيمة المضافة 15%</span><span>{vat:,.2f} ر</span></div>
+  <div class="total-row"><span>الإجمالي شامل الضريبة</span><span style="font-weight:700;">{grand:,.2f} ر</span></div>
+  <div class="total-row"><span>خصم الدفعة المقدمة</span><span style="color:#dc2626;">- {adv_d:,.2f} ر</span></div>
+</div>
+<div class="net-due">
+  <div><div class="lbl">الصافي المستحق</div><div style="font-size:11px;opacity:.7;">Net Amount Due</div></div>
+  <div class="amount">{net:,.2f} ريال</div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+</body></html>"""
+
+    def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type, order_id, customer_name, today_str):
+        labels = ""
+        tank_desc_ar = f"خزان {tank_use} سعة {tank_capacity} — {tank_type}"
+        tank_desc_en = f"Tank {tank_use} Cap. {tank_capacity} — {tank_type}"
+        for sn in serials_list:
+            qr_data = f"SN:{sn}|ORDER:{order_id}|TYPE:{tank_use}|CAP:{tank_capacity}|INSTALL:{tank_type}|MFG:{FACTORY_NAME}|DATE:{today_str}"
+            labels += f"""
+            <div class="label">
+              <div class="label-header"><span>{FACTORY_NAME}</span><span style="font-size:10px;opacity:.8;">مصنع خزانات فايبر جلاس</span></div>
+              <div class="qr-area">
+                <div class="qr-placeholder">QR<br><span style="font-size:8px;">{sn[-12:]}</span></div>
+                <div class="qr-info">
+                  <div class="qr-sn">{sn}</div>
+                  <div class="qr-detail-ar">{tank_desc_ar}</div>
+                  <div class="qr-detail-en">{tank_desc_en}</div>
+                  <div class="qr-detail-ar">طلبية: {order_id}</div>
+                  <div class="qr-detail-ar">تاريخ الإنتاج: {today_str}</div>
+                </div>
+              </div>
+              <div class="label-footer"><span>Fibreglass Tank | {FACTORY_NAME}</span><span>{today_str}</span></div>
+            </div>"""
+        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:20px;}}
+.page-title{{text-align:center;font-size:16px;font-weight:700;color:#1E3A8A;margin-bottom:18px;}}
+.labels-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}}
+.label{{background:#fff;border:2px solid #1E3A8A;border-radius:12px;padding:14px;page-break-inside:avoid;}}
+.label-header{{background:#1E3A8A;color:#fff;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px;font-weight:700;}}
+.qr-area{{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;}}
+.qr-placeholder{{width:80px;height:80px;background:#f1f5f9;border:2px dashed #94a3b8;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#1E3A8A;flex-shrink:0;text-align:center;}}
+.qr-info{{flex:1;}}
+.qr-sn{{font-family:monospace;font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:6px;margin-bottom:6px;word-break:break-all;color:#1E3A8A;font-weight:700;}}
+.qr-detail-ar{{font-size:11px;color:#475569;margin:2px 0;}}
+.qr-detail-en{{font-size:10px;color:#94a3b8;margin:2px 0;direction:ltr;text-align:left;}}
+.label-footer{{border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+@media print{{body{{background:#fff;padding:10px;}}.labels-grid{{grid-template-columns:repeat(2,1fr);gap:10px;}}.label{{page-break-inside:avoid;}}}}
+</style></head><body>
+<div class="page-title">🏷️ بطاقات التعريف والأرقام التسلسلية — {today_str}</div>
+<div class="labels-grid">{labels}</div>
+</body></html>"""
+
+    # ===== تبويب 1: أمر تسليم =====
     with tabs[0]:
-        odf3 = run_query("SELECT o.order_id,c.trade_name,o.qty,c.cr_number,c.tax_number FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
+        odf3 = run_query("""SELECT o.order_id,c.trade_name,o.qty,o.tank_use,o.tank_capacity,o.tank_type,
+            o.unit_price,o.advance_paid,c.cr_number,c.tax_number
+            FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'""")
         if odf3.empty:
             st.info("لا توجد طلبيات.")
         else:
             if 'dok' not in st.session_state: st.session_state.dok = 0
-            with st.form(f"dof_{st.session_state.dok}", clear_on_submit=True):
-                sel_d = st.selectbox("الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in odf3.iterrows()])
-                oid_d = sel_d.split(" | ")[0]
-                or_d = odf3[odf3['order_id']==oid_d].iloc[0]
-                shipped = st.number_input("الكمية المشحونة:", min_value=1, value=5)
-                dn = st.text_input("السائق:")
-                dp = st.text_input("اللوحة:")
-                di = st.text_input("الإقامة:")
-                if st.form_submit_button("🚀 إصدار أمر التسليم"):
-                    if run_write("INSERT INTO delivery_orders(order_id,shipped_qty,driver_name,car_plate,driver_iqama) VALUES(:oid,:sq,:dn,:dp,:di)",{"oid":oid_d,"sq":shipped,"dn":dn,"dp":dp,"di":di}):
-                        nd = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_id DESC LIMIT 1",{"oid":oid_d})
-                        did = int(nd['delivery_id'].iloc[0]) if not nd.empty else "—"
-                        qr = f"SUBUL-{random.randint(100000,999999)}"
-                        render_header()
-                        st.markdown(f"""
-                        <div style="border:1px solid #CBD5E1;padding:15px;border-radius:8px;">
-                        <h3 style="text-align:center;">أمر تسليم رقم: {did}</h3>
-                        <p><b>الطلبية:</b> {oid_d} | <b>العميل:</b> {or_d['trade_name']} | <b>التاريخ:</b> {datetime.date.today()}</p>
-                        <p><b>السائق:</b> {dn} | <b>اللوحة:</b> {dp} | <b>الإقامة:</b> {di}</p>
-                        <p><b>الكمية:</b> {shipped} خزان</p>
-                        <div style="border:2px solid #000;padding:8px;width:180px;margin:10px auto;text-align:center;font-size:12px;">QR: {qr}</div>
-                        </div>""", unsafe_allow_html=True)
-                        dod = pd.DataFrame([{"أمر التسليم":did,"الطلبية":oid_d,"العميل":or_d['trade_name'],"الكمية":shipped,"السائق":dn,"التاريخ":datetime.date.today()}])
-                        st.download_button("⬇️ تنزيل",df_to_csv(dod),f"DO_{did}.csv","text/csv")
-                        st.success(f"✅ تم إصدار أمر التسليم #{did}!")
-                        st.session_state.dok+=1
+            pck_d = st.session_state.dok
 
+            sel_d = st.selectbox("الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in odf3.iterrows()], key=f"dsel_{pck_d}")
+            oid_d = sel_d.split(" | ")[0]
+            or_d  = odf3[odf3['order_id']==oid_d].iloc[0]
+
+            # حساب الكمية المتاحة للشحن
+            tanks_made = int(run_query("SELECT COALESCE(SUM(actual_qty),0) as t FROM production_days WHERE order_id=:oid AND status='مغلق'",{"oid":oid_d})['t'].iloc[0])
+            tanks_shipped_so_far = int(run_query("SELECT COALESCE(SUM(shipped_qty),0) as t FROM delivery_orders WHERE order_id=:oid",{"oid":oid_d})['t'].iloc[0])
+            available_to_ship = tanks_made - tanks_shipped_so_far
+
+            st.info(f"✅ مصنّع: **{tanks_made}** | 🚚 مشحون سابقاً: **{tanks_shipped_so_far}** | 🟢 متاح للشحن الآن: **{available_to_ship}** خزان")
+            if available_to_ship <= 0:
+                st.error("⛔ لا يوجد كمية مصنعة كافية للشحن.")
+            else:
+                c1,c2 = st.columns(2)
+                shipped = c1.number_input("الكمية المشحونة:", min_value=1, max_value=available_to_ship, value=min(1,available_to_ship), key=f"ship_{pck_d}")
+                dn = c2.text_input("اسم السائق:", key=f"dn_{pck_d}")
+                c3,c4 = st.columns(2)
+                dp = c3.text_input("رقم اللوحة:", key=f"dp_{pck_d}")
+                di = c4.text_input("رقم الإقامة:", key=f"di_{pck_d}")
+
+                today_str_d = datetime.date.today().strftime("%Y/%m/%d")
+
+                if st.button("🚀 إصدار أمر التسليم", type="primary", key=f"issue_do_{pck_d}"):
+                    # تحقق من الكمية مرة أخرى
+                    if shipped > available_to_ship:
+                        st.error(f"⛔ لا يوجد كمية مصنعة كافية للشحن. الكمية الجاهزة للشحن الآن هي {available_to_ship} خزان.")
+                    else:
+                        ok_do = run_write("INSERT INTO delivery_orders(order_id,shipped_qty,driver_name,car_plate,driver_iqama) VALUES(:oid,:sq,:dn,:dp,:di)",
+                                          {"oid":oid_d,"sq":shipped,"dn":dn,"dp":dp,"di":di})
+                        if ok_do:
+                            nd = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_id DESC LIMIT 1",{"oid":oid_d})
+                            did_new = int(nd['delivery_id'].iloc[0]) if not nd.empty else 1
+
+                            # جلب الأرقام التسلسلية للخزانات المناسبة
+                            all_sn = run_query("""SELECT serial_number FROM production_tanks
+                                WHERE order_id=:oid AND (delivery_id IS NULL OR delivery_id=0)
+                                ORDER BY prod_date,id LIMIT :lim""",{"oid":oid_d,"lim":shipped})
+                            serials_shipped = all_sn['serial_number'].tolist() if not all_sn.empty else [f"SUBUL-SN-{i}" for i in range(1,shipped+1)]
+
+                            # ربط الأرقام التسلسلية بأمر التسليم
+                            for sn in serials_shipped:
+                                run_write("UPDATE production_tanks SET delivery_id=:did WHERE serial_number=:sn",{"did":did_new,"sn":sn})
+
+                            # إنشاء الفاتورة تلقائياً
+                            sub_auto = float(shipped) * float(or_d['unit_price'])
+                            adv_auto = (float(or_d['advance_paid'])/float(or_d['qty']))*float(shipped) if float(or_d['qty'])>0 else 0
+                            vat_auto = sub_auto * 0.15
+                            grand_auto = sub_auto + vat_auto
+                            net_auto = grand_auto - adv_auto
+                            inv_n_auto = f"INV-{did_new}-{datetime.date.today().strftime('%Y%m%d')}"
+                            run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
+                                      {"did":did_new,"oid":oid_d,"st":sub_auto,"v":vat_auto,"gt":grand_auto,"ad":adv_auto,"nr":net_auto})
+
+                            st.success(f"✅ تم إصدار أمر التسليم #{did_new} وإنشاء الفاتورة {inv_n_auto} تلقائياً!")
+
+                            # HTML أمر التسليم
+                            do_html = make_delivery_html(did_new, oid_d, or_d['trade_name'],
+                                str(or_d['tank_use']), str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
+                                shipped, serials_shipped, dn, dp, di, today_str_d)
+
+                            # HTML الفاتورة
+                            inv_html = make_invoice_html(inv_n_auto, did_new, oid_d, or_d['trade_name'],
+                                str(or_d['cr_number'] or '—'), str(or_d['tax_number'] or '—'),
+                                str(or_d['tank_use']), str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
+                                shipped, float(or_d['unit_price']), serials_shipped,
+                                sub_auto, vat_auto, grand_auto, adv_auto, net_auto, today_str_d)
+
+                            # HTML بطاقات QR
+                            qr_html = make_qr_labels_html(serials_shipped, str(or_d['tank_use']),
+                                str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
+                                oid_d, or_d['trade_name'], today_str_d)
+
+                            col1,col2,col3 = st.columns(3)
+                            col1.download_button("🖨️ أمر التسليم (HTML)", do_html.encode('utf-8'), f"DO_{did_new}.html", "text/html; charset=utf-8", key=f"dl_do_{pck_d}")
+                            col2.download_button("🧾 الفاتورة (HTML)", inv_html.encode('utf-8'), f"INV_{inv_n_auto}.html", "text/html; charset=utf-8", key=f"dl_inv_auto_{pck_d}")
+                            col3.download_button("🏷️ بطاقات QR (HTML)", qr_html.encode('utf-8'), f"QR_labels_{did_new}.html", "text/html; charset=utf-8", key=f"dl_qr_{pck_d}")
+                            st.caption("💡 افتح كل ملف في Chrome أو Safari ثم Ctrl+P للطباعة أو حفظ PDF")
+                            st.session_state.dok += 1
+
+    # ===== تبويب 2: فاتورة ضريبية =====
     with tabs[1]:
-        dldf = run_query("SELECT d.delivery_id,d.order_id,d.shipped_qty,d.delivery_date,o.unit_price,o.advance_paid,o.qty as tq,c.trade_name,c.cr_number,c.tax_number FROM delivery_orders d JOIN orders o ON d.order_id=o.order_id JOIN customers c ON o.customer_id=c.id")
+        dldf = run_query("""SELECT d.delivery_id,d.order_id,d.shipped_qty,d.delivery_date,
+            o.unit_price,o.advance_paid,o.qty as tq,o.tank_use,o.tank_capacity,o.tank_type,
+            c.trade_name,c.cr_number,c.tax_number
+            FROM delivery_orders d JOIN orders o ON d.order_id=o.order_id JOIN customers c ON o.customer_id=c.id""")
         if dldf.empty:
             st.info("لا توجد أوامر تسليم.")
         else:
@@ -971,29 +2000,41 @@ elif menu == "💰 الشحن والفواتير":
             sel_dl = st.selectbox("أمر التسليم:", dl_opts)
             did2 = int(sel_dl.split("#")[1].split(" ")[0])
             dr = dldf[dldf['delivery_id']==did2].iloc[0]
-            sub = float(dr['shipped_qty'])*float(dr['unit_price'])
-            adv_d = (float(dr['advance_paid'])/float(dr['tq']))*float(dr['shipped_qty']) if float(dr['tq'])>0 else 0
-            vat = sub*0.15; grand = sub+vat; net = grand-adv_d
-            inv_n = f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
-            render_header()
-            st.markdown(f"""
-            <div style="border:1px solid #CBD5E1;padding:15px;border-radius:8px;margin-top:10px;">
-            <h3 style="text-align:center;color:#1E3A8A;">فاتورة ضريبية رسمية | {inv_n}</h3>
-            <p><b>التاريخ:</b> {datetime.date.today()} | <b>العميل:</b> {dr['trade_name']} | <b>س.ت:</b> {dr['cr_number']} | <b>الرقم الضريبي:</b> {dr['tax_number']}</p>
-            <table style="width:100%;border-collapse:collapse;" border="1">
-            <tr style="background:#1E3A8A;color:white;"><th style="padding:5px;">البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>
-            <tr><td style="padding:5px;">خزانات فايبر جلاس</td><td>{dr['shipped_qty']}</td><td>{float(dr['unit_price']):,.2f}</td><td>{sub:,.2f}</td></tr>
-            </table>
-            <p style="margin-top:10px;">قبل الضريبة: {sub:,.2f} ر | ضريبة 15%: {vat:,.2f} ر | الإجمالي: {grand:,.2f} ر</p>
-            <p style="color:green;">خصم المقدم: -{adv_d:,.2f} ر</p>
-            <h3 style="color:red;">الصافي المستحق: {net:,.2f} ريال</h3>
-            </div>""", unsafe_allow_html=True)
-            idl = pd.DataFrame([{"رقم الفاتورة":inv_n,"العميل":dr['trade_name'],"الإجمالي":grand,"الصافي":net,"التاريخ":datetime.date.today()}])
-            st.download_button("⬇️ تنزيل الفاتورة",df_to_csv(idl),f"{inv_n}.csv","text/csv")
-            if st.button("💾 حفظ الفاتورة"):
-                if run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",{"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net}):
-                    st.success(f"✅ تم حفظ الفاتورة {inv_n}!")
+            sub  = float(dr['shipped_qty']) * float(dr['unit_price'])
+            adv_d= (float(dr['advance_paid'])/float(dr['tq']))*float(dr['shipped_qty']) if float(dr['tq'])>0 else 0
+            vat  = sub*0.15; grand=sub+vat; net=grand-adv_d
+            inv_n= f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
+            today_str_inv = datetime.date.today().strftime("%Y/%m/%d")
 
+            serials_inv = run_query("SELECT serial_number FROM production_tanks WHERE delivery_id=:did ORDER BY id",{"did":did2})
+            sn_list_inv = serials_inv['serial_number'].tolist() if not serials_inv.empty else []
+
+            st.markdown(f"#### 🧾 فاتورة: {inv_n}")
+            inv_html2 = make_invoice_html(inv_n, did2, dr['order_id'], dr['trade_name'],
+                str(dr['cr_number'] or '—'), str(dr['tax_number'] or '—'),
+                str(dr['tank_use']), str(dr['tank_capacity'] or '—'), str(dr['tank_type']),
+                int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
+                sub, vat, grand, adv_d, net, today_str_inv)
+
+            c1f,c2f,c3f,c4f = st.columns(4)
+            c1f.metric("قبل الضريبة", f"{sub:,.2f} ر")
+            c2f.metric("ضريبة 15%", f"{vat:,.2f} ر")
+            c3f.metric("إجمالي", f"{grand:,.2f} ر")
+            c4f.metric("الصافي المستحق", f"{net:,.2f} ر")
+
+            col_b1,col_b2 = st.columns(2)
+            col_b1.download_button("🖨️ طباعة الفاتورة (HTML)", inv_html2.encode('utf-8'), f"{inv_n}.html", "text/html; charset=utf-8")
+            if col_b2.button("💾 حفظ الفاتورة في قاعدة البيانات"):
+                # تحقق من عدم التكرار
+                exists = run_query("SELECT invoice_id FROM sales_invoices WHERE delivery_id=:did",{"did":did2})
+                if not exists.empty:
+                    st.warning("⚠️ هذه الفاتورة محفوظة مسبقاً.")
+                else:
+                    if run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
+                                 {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net}):
+                        st.success(f"✅ تم حفظ الفاتورة {inv_n}!")
+
+    # ===== تبويب 3: سند قبض =====
     with tabs[2]:
         if 'rk' not in st.session_state: st.session_state.rk = 0
         cdf4 = run_query("SELECT id,trade_name FROM customers")
@@ -1011,6 +2052,7 @@ elif menu == "💰 الشحن والفواتير":
                         st.success(f"✅ تم تسجيل {pa4:,.2f} ريال!")
                         st.session_state.rk+=1; st.rerun()
 
+    # ===== تبويب 4: استعلام فواتير =====
     with tabs[3]:
         cdf5 = run_query("SELECT id,trade_name FROM customers")
         if not cdf5.empty:
