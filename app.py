@@ -4,6 +4,145 @@ import datetime
 import random
 from sqlalchemy import text
 
+# ================================================================
+# QR Code Generator — Pure Python + Pillow (no external libraries)
+# ================================================================
+import io as _io, base64 as _b64
+from PIL import Image as _Img, ImageDraw as _Draw
+
+def _gf_mul(x, y, _EXP=[None], _LOG=[None]):
+    if _EXP[0] is None:
+        exp = []
+        result = 1
+        for _ in range(255):
+            exp.append(result)
+            result <<= 1
+            if result >= 256: result ^= 285
+        _EXP[0] = exp + exp
+        log = [0]*256
+        for i in range(255): log[exp[i]] = i
+        _LOG[0] = log
+    if x==0 or y==0: return 0
+    return _EXP[0][(_LOG[0][x]+_LOG[0][y])%255]
+
+def _rs_encode(data, n_ec):
+    def _poly_mul(p,q):
+        r=[0]*(len(p)+len(q)-1)
+        for j,qj in enumerate(q):
+            for i,pi in enumerate(p): r[i+j]^=_gf_mul(pi,qj)
+        return r
+    exp_table=[]
+    r2=1
+    for _ in range(255):
+        exp_table.append(r2); r2<<=1
+        if r2>=256: r2^=285
+    exp_table+=exp_table
+    g=[1]
+    for i in range(n_ec):
+        g2=[0]*(len(g)+1)
+        alpha_i=exp_table[i]
+        for k,gk in enumerate(g): g2[k]^=gk
+        for k,gk in enumerate(g): g2[k+1]^=_gf_mul(gk,alpha_i)
+        g=g2
+    msg=list(data)+[0]*n_ec
+    for i in range(len(data)):
+        c=msg[i]
+        if c:
+            for j,gj in enumerate(g): msg[i+j]^=_gf_mul(gj,c)
+    return msg[len(data):]
+
+def make_qr_b64(text, color=(30,58,138), module_size=8, quiet=4):
+    """توليد QR Code كـ base64 PNG — يعمل بدون إنترنت"""
+    raw = text.encode('latin-1', errors='replace')
+    n = len(raw)
+    # version selection (Byte mode, Error Level L)
+    caps = [(1,19,7,7),(2,34,10,16),(3,55,15,19),(4,80,20,25),(5,108,26,31),
+            (6,136,18,36),(7,156,20,40),(8,194,24,48),(9,232,30,60),(10,274,18,70)]
+    ver,size_,ec,dc = next(((v,17+4*v,e,d) for v,cap,e,d in caps if n<=cap), (10,57,18,70))
+    size = 17+4*ver
+    M=[[None]*size for _ in range(size)]
+    def sf(r,c,v):
+        if 0<=r<size and 0<=c<size: M[r][c]=v
+    def finder(r,c):
+        for i in range(-1,8):
+            for j in range(-1,8):
+                if not(0<=r+i<size and 0<=c+j<size): continue
+                if i in(-1,7) or j in(-1,7): M[r+i][c+j]=0
+                elif i in(0,6) or j in(0,6): M[r+i][c+j]=1
+                elif 2<=i<=4 and 2<=j<=4: M[r+i][c+j]=1
+                else: M[r+i][c+j]=0
+    finder(0,0); finder(0,size-7); finder(size-7,0)
+    for i in range(8,size-8):
+        M[6][i]=i%2==0; M[i][6]=i%2==0
+    for i in range(9):
+        if M[8][i] is None: M[8][i]=0
+        if M[i][8] is None: M[i][8]=0
+    for i in range(size-8,size):
+        if M[8][i] is None: M[8][i]=0
+        if M[i][8] is None: M[i][8]=0
+    M[size-8][8]=1
+    # alignment
+    alc={2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]}
+    for ar in alc.get(ver,[]):
+        for ac in alc.get(ver,[]):
+            if M[ar][ac] is not None: continue
+            for dr in range(-2,3):
+                for dc2 in range(-2,3):
+                    rr,cc=ar+dr,ac+dc2
+                    if 0<=rr<size and 0<=cc<size:
+                        if abs(dr)==2 or abs(dc2)==2: M[rr][cc]=1
+                        elif dr==0 and dc2==0: M[rr][cc]=1
+                        else: M[rr][cc]=0
+    # encode
+    dn=min(n,dc)
+    bits=[0,1,0,0]
+    for i in range(7,-1,-1): bits.append((dn>>i)&1)
+    for byte in raw[:dc]:
+        for i in range(7,-1,-1): bits.append((byte>>i)&1)
+    bits+=[0,0,0,0]
+    while len(bits)%8: bits.append(0)
+    pad=[0xEC,0x11]; pi=0; total=dc*8
+    while len(bits)<total:
+        for b in range(7,-1,-1): bits.append((pad[pi%2]>>b)&1)
+        pi+=1
+    dc_b=[]
+    for i in range(0,total,8):
+        v=0
+        for b in bits[i:i+8]: v=(v<<1)|b
+        dc_b.append(v)
+    ec_b=_rs_encode(bytes(dc_b),ec)
+    all_bytes=dc_b+list(ec_b)
+    all_bits=[]
+    for byte in all_bytes:
+        for i in range(7,-1,-1): all_bits.append((byte>>i)&1)
+    bi=0; col=size-1; up=True
+    while col>=0:
+        if col==6: col-=1
+        rows=range(size-1,-1,-1) if up else range(size)
+        for row in rows:
+            for co in [0,-1]:
+                c=col+co
+                if 0<=c<size and M[row][c] is None:
+                    b=all_bits[bi] if bi<len(all_bits) else 0
+                    M[row][c]=b^(1 if (row+c)%2==0 else 0)
+                    bi+=1
+        col-=2; up=not up
+    for r in range(size):
+        for c in range(size):
+            if M[r][c] is None: M[r][c]=0
+    # render
+    ns=(size+2*quiet)*module_size
+    img=_Img.new('RGB',(ns,ns),(255,255,255))
+    draw=_Draw.Draw(img)
+    for r in range(size):
+        for c in range(size):
+            if M[r][c]:
+                x0=(c+quiet)*module_size; y0=(r+quiet)*module_size
+                draw.rectangle([x0,y0,x0+module_size-1,y0+module_size-1],fill=color)
+    buf=_io.BytesIO(); img.save(buf,format='PNG')
+    return _b64.b64encode(buf.getvalue()).decode()
+
+
 try:
     conn = st.connection("postgresql", type="sql")
 except Exception as e:
@@ -1950,13 +2089,11 @@ elif menu == "💰 الشحن والفواتير":
             for i,sn in enumerate(serials_list))
         # QR data for delivery
         qr_do_data = f"DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|TANKS:{qty}|TYPE:{tu}|CAP:{tc}|DATE:{today_str}|DRIVER:{driver_name}|PLATE:{car_plate}"
-        import json as _json
-        do_qr_json = _json.dumps([{"id":"do_qr","qr_text": qr_do_data}])
-        return f"""<!DOCTYPE html>
+        _qr_do_b64 = make_qr_b64(qr_do_data, color=(30,58,138), module_size=7)
+        _tpl_do = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -1999,7 +2136,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="hdr-right">
     <div class="badge">أمر التسليم رقم: {did}</div>
     <div class="badge-en">Delivery Note No. {did}</div>
-    <div id="do_qr" class="qr-hdr"></div>
+    <img src="data:image/png;base64,{QR_DO_B64}" style="width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
     <p style="font-size:10px;color:#94a3b8;text-align:left;">التاريخ: {today_str}</p>
   </div>
 </div>
@@ -2031,14 +2168,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
   <span>نظام ERP v7.0 | {today_str}</span>
 </div>
-<script>
-var doData = {do_qr_json};
-doData.forEach(function(item){{
-  var el=document.getElementById(item.id);
-  if(el) new QRCode(el,{{text:item.qr_text,width:80,height:80,colorDark:"#1E3A8A",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
-}});
-</script>
+
 </body></html>"""
+        return _tpl_do.replace('{QR_DO_B64}', _qr_do_b64)
 
     def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number,
                           tank_use, tank_capacity, tank_type,
@@ -2056,14 +2188,12 @@ doData.forEach(function(item){{
               <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
             </tr>'''
             for i,sn in enumerate(serials_list))
-        import json as _json
         qr_inv_data  = f"INV:{inv_n}|DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|QTY:{qty}|TYPE:{tu}|CAP:{tc}|TOTAL:{grand:.2f}|NET:{net:.2f}|DATE:{today_str}|VAT_REG:{tax_number}"
-        inv_qr_json  = _json.dumps([{"id":"inv_qr","qr_text": qr_inv_data}])
-        return f"""<!DOCTYPE html>
+        _qr_inv_b64  = make_qr_b64(qr_inv_data, color=(220,38,38), module_size=7)
+        _tpl_inv = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -2108,7 +2238,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="hdr-right">
     <div class="badge-inv">فاتورة ضريبية رسمية</div>
     <div class="badge-en">TAX INVOICE</div>
-    <div id="inv_qr" class="qr-hdr"></div>
+    <img src="data:image/png;base64,{QR_INV_B64}" style="width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق / Scan to Verify</p>
   </div>
 </div>
@@ -2169,14 +2299,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
   <span>نظام ERP v7.0 | {today_str}</span>
 </div>
-<script>
-var invData = {inv_qr_json};
-invData.forEach(function(item){{
-  var el=document.getElementById(item.id);
-  if(el) new QRCode(el,{{text:item.qr_text,width:90,height:90,colorDark:"#dc2626",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
-}});
-</script>
+
 </body></html>"""
+        return _tpl_inv.replace('{QR_INV_B64}', _qr_inv_b64)
 
     def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type,
                              order_id, customer_name, today_str):
@@ -2185,12 +2310,13 @@ invData.forEach(function(item){{
         tt  = _sv(tank_type)
         tank_desc_ar = f"خزان {tu} — سعة {tc} — {tt}"
         tank_desc_en = f"Tank {tu} | Capacity: {tc} | {tt}"
-        import json as _json
         labels_data = []
         for i,sn in enumerate(serials_list):
             qr_text = f"SN:{sn}|ORDER:{order_id}|TYPE:{tu}|CAP:{tc}|INSTALL:{tt}|CLIENT:{customer_name}|MFG:{FACTORY_NAME}|DATE:{today_str}|SEQ:{i+1}OF{len(serials_list)}"
             labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
-        labels_json = _json.dumps(labels_data, ensure_ascii=False)
+        # توليد QR لكل بطاقة
+        for item in labels_data:
+            item['qr_b64'] = make_qr_b64(item['qr_text'], color=(30,58,138), module_size=9)
 
         # كل بطاقة في صفحة A4 مستقلة
         label_pages = ""
@@ -2214,7 +2340,7 @@ invData.forEach(function(item){{
     </div>
     <div class="card-body">
       <div class="qr-section">
-        <div id="{item['id']}" class="qr-box"></div>
+        <img src="data:image/png;base64,{item['qr_b64']}" class="qr-box" style="display:block;width:130px;height:130px;border:3px solid #1E3A8A;border-radius:8px;" alt="QR">
         <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
         <div class="seq-badge">خزان {item['index']} من {len(serials_list)}<br>Tank {item['index']} of {len(serials_list)}</div>
       </div>
@@ -2247,7 +2373,6 @@ invData.forEach(function(item){{
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -2324,18 +2449,7 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 </head>
 <body>
 {label_pages}
-<script>
-var labelsData = {labels_json};
-labelsData.forEach(function(item){{
-  var el=document.getElementById(item.id);
-  if(el) new QRCode(el,{{
-    text:item.qr_text,
-    width:130,height:130,
-    colorDark:"#1E3A8A",colorLight:"#ffffff",
-    correctLevel:QRCode.CorrectLevel.H
-  }});
-}});
-</script>
+
 </body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
@@ -2556,13 +2670,11 @@ labelsData.forEach(function(item){{
                         adv_order = float(order_info['advance_paid'].iloc[0]) if not order_info.empty else 0
                         remaining_after = contract_val - adv_order - total_paid_so_far
 
-                        import json as _json
                         qr_rcpt = f"RECEIPT:{receipt_no}|CLIENT:{sc4}|ORDER:{so4}|AMOUNT:{pa4:.2f}|METHOD:{pt4}|DATE:{today_r}"
-                        rcpt_qr_json = _json.dumps([{"id":"rcpt_qr","qr_text":qr_rcpt}])
+                        _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=6)
 
                         receipt_html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -2611,7 +2723,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
   <div class="hdr-right">
     <div class="rcpt-badge">سند قبض</div>
     <div class="rcpt-badge-en">Payment Receipt</div>
-    <div id="rcpt_qr" class="qr-hdr"></div>
+    <img src="data:image/png;base64,{{RCPT_QR_B64}}" style="width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق</p>
   </div>
 </div>
@@ -2643,14 +2755,9 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
   <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
   <span>نظام ERP v7.0 | {today_r}</span>
 </div>
-<script>
-var rcptData = {rcpt_qr_json};
-rcptData.forEach(function(item){{
-  var el=document.getElementById(item.id);
-  if(el) new QRCode(el,{{text:item.qr_text,width:80,height:80,colorDark:"#16a34a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
-}});
-</script>
+
 </body></html>"""
+                        receipt_html = receipt_html.replace('{{RCPT_QR_B64}}', _qr_rcpt_b64)
                         st.session_state.receipt_html  = receipt_html
                         st.session_state.receipt_ready = True
                         st.session_state.rk += 1
