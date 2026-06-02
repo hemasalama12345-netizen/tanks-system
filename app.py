@@ -14,107 +14,28 @@ from PIL import Image as _Img, ImageDraw as _Draw
 
 def make_qr_b64(text, color=(30, 58, 138), module_size=10, quiet=4, hole_size=4):
     """
-    توليد QR Code مخصص يحاكي النمط المطلوب (مربعات مفرغة) ويدعم الحجم الديناميكي
+    توليد QR Code واضح وقابل للقراءة — بدون تعديلات على الشكل تضر بالقراءة
     """
     try:
         import qrcode
         qr = qrcode.QRCode(
             version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=1, # we handle size manually
-            border=0,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=module_size,
+            border=quiet,
         )
         qr.add_data(text)
         qr.make(fit=True)
-        matrix = qr.get_matrix()
-        
-        n_rows = len(matrix)
-        n_cols = len(matrix[0])
-        
-        # Calculate full image size with border
-        full_size_px = (n_rows + 2 * quiet) * module_size
-        
-        # Base image
-        img = _Img.new('RGB', (full_size_px, full_size_px), (255, 255, 255))
-        draw = _Draw.Draw(img)
-        
-        # Custom module design: square with white center
-        def draw_custom_module(draw, r, c, color):
-            # Calculate pixel coordinates
-            x0 = (c + quiet) * module_size
-            y0 = (r + quiet) * module_size
-            x1 = x0 + module_size - 1
-            y1 = y0 + module_size - 1
-            
-            # Inner hole pixel coordinates
-            h_x0 = x0 + (module_size - hole_size) // 2
-            h_y0 = y0 + (module_size - hole_size) // 2
-            h_x1 = h_x0 + hole_size - 1
-            h_y1 = h_y0 + hole_size - 1
-            
-            # Outer colored box
-            draw.rectangle([x0, y0, x1, y1], fill=color)
-            # Inner white hole
-            draw.rectangle([h_x0, h_y0, h_x1, h_y1], fill=(255, 255, 255))
 
-        # Replicate style from input image for entire QR code
-        for r in range(n_rows):
-            for c in range(n_cols):
-                if matrix[r][c]:
-                    draw_custom_module(draw, r, c, color)
-                    
-        # Apply special style to finder patterns to match exactly
-        finder_size = 7
-        for r_start, c_start in [(0, 0), (0, n_cols - finder_size), (n_rows - finder_size, 0)]:
-            # Outer box
-            f_x0 = (c_start + quiet) * module_size
-            f_y0 = (r_start + quiet) * module_size
-            f_x1 = f_x0 + finder_size * module_size - 1
-            f_y1 = f_y0 + finder_size * module_size - 1
-            
-            # Style the finder pattern itself (large squares)
-            for r_f in range(finder_size):
-                for c_f in range(finder_size):
-                    # Check if standard finder logic applies
-                    if (r_f == 0 or r_f == finder_size - 1 or c_f == 0 or c_f == finder_size - 1) or                        (2 <= r_f <= finder_size - 3 and 2 <= c_f <= finder_size - 3):
-                        # Use special stylized module for finders
-                        f_mod_x0 = (c_start + c_f + quiet) * module_size
-                        f_mod_y0 = (r_start + r_f + quiet) * module_size
-                        f_mod_x1 = f_mod_x0 + module_size - 1
-                        f_mod_y1 = f_mod_y0 + module_size - 1
-                        
-                        # Re-implement stylized module logic to avoid double draw
-                        draw.rectangle([f_mod_x0, f_mod_y0, f_mod_x1, f_mod_y1], fill=color)
-                        # Center white area is handled by standard modules that will be overlaid
-                        # Let's refine to draw exactly like the modules within finder patterns.
-                        
-                        # Outer finder pattern style is crucial
-                        if r_f == 0 or r_f == finder_size - 1 or c_f == 0 or c_f == finder_size - 1:
-                           # Stylized modules on finder border
-                           pass
-                        
-            # Final touch: ensure inner white space of finder is clear before drawing stylized centers
-            inner_f_x0 = f_x0 + module_size
-            inner_f_y0 = f_y0 + module_size
-            inner_f_x1 = f_x1 - module_size
-            inner_f_y1 = f_y1 - module_size
-            
-            # Correcting logic: The finder patterns themselves contain regular stylized modules.
-            # No special overlays needed, just standard modules.
-            
-        # Standard draw already handles everything. The previous logic was overly complex.
+        # توليد صورة بلون مخصص (أسود فقط لضمان القراءة)
+        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
         buf = _io.BytesIO()
         img.save(buf, format='PNG')
         return _b64.b64encode(buf.getvalue()).decode()
-        
+
     except ImportError:
-        # PURE FALLBACK (not stylized to avoid extreme complexity without library)
-        # We will keep a standardfallback to avoid crash
-        import io, base64
-        from PIL import Image, ImageDraw
-        qr_inv_b64 = make_standard_fallback_qr_b64(text, color, module_size, quiet)
-        return qr_inv_b64
+        return make_standard_fallback_qr_b64(text, color, module_size, quiet)
 
 
 # FALLBACK: A standard dynamic pure-python QR generator if library is missing
