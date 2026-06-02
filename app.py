@@ -2136,7 +2136,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="hdr-right">
     <div class="badge">أمر التسليم رقم: {did}</div>
     <div class="badge-en">Delivery Note No. {did}</div>
-    <img src="data:image/png;base64,{QR_DO_B64}" style="width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
+    <img src="data:image/png;base64,{_qr_do_b64}" style="width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
     <p style="font-size:10px;color:#94a3b8;text-align:left;">التاريخ: {today_str}</p>
   </div>
 </div>
@@ -2170,7 +2170,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 </div>
 
 </body></html>"""
-        return _tpl_do.replace('{QR_DO_B64}', _qr_do_b64)
+        return _tpl_do
 
     def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number,
                           tank_use, tank_capacity, tank_type,
@@ -2238,7 +2238,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="hdr-right">
     <div class="badge-inv">فاتورة ضريبية رسمية</div>
     <div class="badge-en">TAX INVOICE</div>
-    <img src="data:image/png;base64,{QR_INV_B64}" style="width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;" alt="QR">
+    <img src="data:image/png;base64,{_qr_inv_b64}" style="width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق / Scan to Verify</p>
   </div>
 </div>
@@ -2301,7 +2301,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 </div>
 
 </body></html>"""
-        return _tpl_inv.replace('{QR_INV_B64}', _qr_inv_b64)
+        return _tpl_inv
 
     def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type,
                              order_id, customer_name, today_str):
@@ -2723,7 +2723,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
   <div class="hdr-right">
     <div class="rcpt-badge">سند قبض</div>
     <div class="rcpt-badge-en">Payment Receipt</div>
-    <img src="data:image/png;base64,{{RCPT_QR_B64}}" style="width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;" alt="QR">
+    <img src="data:image/png;base64,{_qr_rcpt_b64}" style="width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق</p>
   </div>
 </div>
@@ -2757,7 +2757,6 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 </div>
 
 </body></html>"""
-                        receipt_html = receipt_html.replace('{{RCPT_QR_B64}}', _qr_rcpt_b64)
                         st.session_state.receipt_html  = receipt_html
                         st.session_state.receipt_ready = True
                         st.session_state.rk += 1
