@@ -165,63 +165,65 @@ elif menu == "📦 الطلبيات":
                     else:
                         st.error("أدخل اسم العميل!")
 
-        with st.form(f"order_form_{st.session_state.order_key}", clear_on_submit=True):
-            st.write("#### ➕ فتح طلبية جديدة")
-            auto_code = f"SUBUL-ORD-{datetime.date.today().year}-{random.randint(1000,9999)}"
-            order_id_f = st.text_input("كود الطلبية:", value=auto_code)
+        st.write("#### ➕ فتح طلبية جديدة")
+        ok = st.session_state.order_key
+        auto_code = f"SUBUL-ORD-{datetime.date.today().year}-{random.randint(1000,9999)}"
+        order_id_f = st.text_input("كود الطلبية:", value=auto_code, key=f"oid_{ok}")
 
-            customers_df = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
-            if customers_df.empty:
-                st.warning("⚠️ لا يوجد عملاء — أضف عميلاً من الأعلى أولاً.")
-                cust_sel = None
+        customers_df = run_query("SELECT id, trade_name FROM customers ORDER BY trade_name")
+        if customers_df.empty:
+            st.warning("⚠️ لا يوجد عملاء — أضف عميلاً من الأعلى أولاً.")
+            cust_sel = None
+        else:
+            cust_sel = st.selectbox("اختر العميل:", customers_df['trade_name'].tolist(), key=f"csel_{ok}")
+
+        c1,c2,c3 = st.columns(3)
+        t_use = c1.selectbox("استخدام الخزان:", ["ماء","صرف","ديزل","حريق"], key=f"tuse_{ok}")
+        t_cap = c2.text_input("السعة:", key=f"tcap_{ok}")
+        t_typ = c3.selectbox("نوع التركيب:", ["دفّان","فوق الأرض"], key=f"ttyp_{ok}")
+
+        c4,c5 = st.columns(2)
+        qty_f = c4.number_input("عدد الخزانات:", min_value=1, value=1, key=f"qty_{ok}")
+        uprice_f = c5.number_input("سعر الخزان (ريال):", min_value=0.0, value=0.0, key=f"uprice_{ok}")
+        total_val = qty_f * uprice_f
+
+        adv_mode = st.selectbox("طريقة المقدم:", ["مبلغ بالريال","نسبة مئوية (%)"], key=f"advm_{ok}")
+        adv_val = st.number_input("قيمة المقدم:", min_value=0.0, value=0.0, key=f"advv_{ok}")
+        net_adv = (total_val * adv_val / 100) if adv_mode == "نسبة مئوية (%)" else adv_val
+        remaining = total_val - net_adv
+
+        st.markdown(f"💰 **إجمالي:** {total_val:,.2f} | 🟢 **المقدم:** {net_adv:,.2f} | 🔴 **المتبقي:** {remaining:,.2f}")
+
+        st.write("---")
+        st.markdown("**كميات المواد المعيارية لخزان واحد:**")
+        x1,x2,x3 = st.columns(3)
+        r_ex = x1.number_input("راتنج (كجم):", min_value=0.0, value=0.0, key=f"rex_{ok}")
+        m_ex = x2.number_input("ألياف Mat (كجم):", min_value=0.0, value=0.0, key=f"mex_{ok}")
+        v_ex = x3.number_input("روفرز (كجم):", min_value=0.0, value=0.0, key=f"vex_{ok}")
+        t_ex = x1.number_input("تيسو (م²):", min_value=0.0, value=0.0, key=f"tex_{ok}")
+        ca_ex = x2.number_input("مصلد (كجم):", min_value=0.0, value=0.0, key=f"caex_{ok}")
+        cc_ex = x3.number_input("كالسيوم (كجم):", min_value=0.0, value=0.0, key=f"ccex_{ok}")
+        s_ex = x1.number_input("سيليكا (كجم):", min_value=0.0, value=0.0, key=f"sex_{ok}")
+
+        if qty_f > 0:
+            st.info(f"📊 إجمالي المواد للطلبية ({qty_f} خزان): راتنج {r_ex*qty_f:.0f} | ألياف {m_ex*qty_f:.0f} | روفرز {v_ex*qty_f:.0f} | تيسو {t_ex*qty_f:.0f} | مصلد {ca_ex*qty_f:.0f} | كالسيوم {cc_ex*qty_f:.0f} | سيليكا {s_ex*qty_f:.0f} كجم/م²")
+
+        if st.button("🚀 حفظ الطلبية", key=f"save_ord_{ok}"):
+            if not cust_sel:
+                st.error("أضف عميلاً أولاً!")
+            elif uprice_f == 0:
+                st.error("أدخل سعر الخزان!")
             else:
-                cust_sel = st.selectbox("اختر العميل:", customers_df['trade_name'].tolist())
-
-            c1,c2,c3 = st.columns(3)
-            t_use = c1.selectbox("استخدام الخزان:", ["ماء","صرف","ديزل","حريق"])
-            t_cap = c2.text_input("السعة:")
-            t_typ = c3.selectbox("نوع التركيب:", ["دفّان","فوق الأرض"])
-
-            c4,c5 = st.columns(2)
-            qty_f = c4.number_input("عدد الخزانات:", min_value=1, value=10)
-            uprice_f = c5.number_input("سعر الخزان (ريال):", min_value=0.0, value=3500.0)
-            total_val = qty_f * uprice_f
-
-            adv_mode = st.selectbox("طريقة المقدم:", ["مبلغ بالريال","نسبة مئوية (%)"])
-            adv_val = st.number_input("قيمة المقدم:", min_value=0.0, value=0.0)
-            net_adv = (total_val * adv_val / 100) if adv_mode == "نسبة مئوية (%)" else adv_val
-            remaining = total_val - net_adv
-
-            st.markdown(f"💰 **إجمالي:** {total_val:,.2f} | 🟢 **المقدم:** {net_adv:,.2f} | 🔴 **المتبقي:** {remaining:,.2f}")
-
-            st.write("---")
-            st.markdown("**كميات المواد المعيارية لخزان واحد:**")
-            x1,x2,x3 = st.columns(3)
-            r_ex = x1.number_input("راتنج (كجم):", min_value=0.0, value=250.0)
-            m_ex = x2.number_input("ألياف Mat (كجم):", min_value=0.0, value=80.0)
-            v_ex = x3.number_input("روفرز (كجم):", min_value=0.0, value=40.0)
-            t_ex = x1.number_input("تيسو (م²):", min_value=0.0, value=12.0)
-            ca_ex = x2.number_input("مصلد (كجم):", min_value=0.0, value=4.0)
-            cc_ex = x3.number_input("كالسيوم (كجم):", min_value=0.0, value=100.0)
-            s_ex = x1.number_input("سيليكا (كجم):", min_value=0.0, value=8.0)
-
-            st.info(f"📊 إجمالي المواد للطلبية كاملة ({qty_f} خزان): راتنج {r_ex*qty_f:.0f} | ألياف {m_ex*qty_f:.0f} | روفرز {v_ex*qty_f:.0f} | تيسو {t_ex*qty_f:.0f} | مصلد {ca_ex*qty_f:.0f} | كالسيوم {cc_ex*qty_f:.0f} | سيليكا {s_ex*qty_f:.0f} كجم/م²")
-
-            submitted = st.form_submit_button("🚀 حفظ الطلبية")
-            if submitted:
-                if not cust_sel:
-                    st.error("أضف عميلاً أولاً!")
-                else:
-                    cid = int(customers_df[customers_df['trade_name']==cust_sel]['id'].iloc[0])
-                    ok = run_write("""INSERT INTO orders (order_id,customer_id,tank_use,tank_capacity,tank_type,qty,unit_price,total_price,advance_paid,remaining_balance,resin_exp,mat_exp,roving_exp,tissue_exp,catalyst_exp,calcium_exp,silica_exp)
-                        VALUES (:oid,:cid,:tu,:tc,:tt,:qty,:up,:tp,:ap,:rb,:re,:me,:ve,:te,:cae,:cce,:se)""",
-                        {"oid":order_id_f,"cid":cid,"tu":t_use,"tc":t_cap,"tt":t_typ,"qty":qty_f,"up":uprice_f,
-                         "tp":total_val,"ap":net_adv,"rb":remaining,"re":r_ex,"me":m_ex,"ve":v_ex,
-                         "te":t_ex,"cae":ca_ex,"cce":cc_ex,"se":s_ex})
-                    if ok:
-                        st.success("✅ تم حفظ الطلبية! تم تصفير الحقول.")
-                        st.session_state.order_key += 1
-                        st.rerun()
+                cid = int(customers_df[customers_df['trade_name']==cust_sel]['id'].iloc[0])
+                res = run_write("""INSERT INTO orders (order_id,customer_id,tank_use,tank_capacity,tank_type,qty,unit_price,total_price,advance_paid,remaining_balance,resin_exp,mat_exp,roving_exp,tissue_exp,catalyst_exp,calcium_exp,silica_exp)
+                    VALUES (:oid,:cid,:tu,:tc,:tt,:qty,:up,:tp,:ap,:rb,:re,:me,:ve,:te,:cae,:cce,:se)""",
+                    {"oid":order_id_f,"cid":cid,"tu":t_use,"tc":t_cap,"tt":t_typ,"qty":qty_f,"up":uprice_f,
+                     "tp":total_val,"ap":net_adv,"rb":remaining,"re":r_ex,"me":m_ex,"ve":v_ex,
+                     "te":t_ex,"cae":ca_ex,"cce":cc_ex,"se":s_ex})
+                if res:
+                    st.success("✅ تم حفظ الطلبية! تم تصفير الحقول.")
+                    st.session_state.order_key += 1
+                    st.rerun()
 
     with tabs[1]:
         orders_df = run_query("SELECT o.order_id, c.trade_name, o.qty, o.status FROM orders o JOIN customers c ON o.customer_id=c.id ORDER BY o.order_date DESC")
