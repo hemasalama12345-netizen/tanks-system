@@ -336,25 +336,80 @@ elif menu == "📦 الطلبيات":
 
                     st.markdown("---")
 
-                    # القسم 4: الوضع المالي
-                    st.markdown("#### 💰 الوضع المالي")
-                    f1,f2,f3,f4 = st.columns(4)
-                    f1.metric("إجمالي العقد + ضريبة 15%", f"{float(ord_r['total_price'])*1.15:,.2f} ر")
-                    f2.metric("المقدم المستلم", f"{float(ord_r['advance_paid']):,.2f} ر")
-                    f3.metric("الدفعات المستلمة", f"{total_received:,.2f} ر")
-                    f4.metric("🔴 الرصيد المستحق", f"{real_remaining:,.2f} ر")
+                    # القسم 4: الوضع المالي التفصيلي
+                    st.markdown("#### 💰 الوضع المالي التفصيلي")
 
-                    # سجل الدفعات
-                    pays = run_query("""SELECT payment_date,amount,payment_type,bank_name
-                        FROM customer_payments WHERE order_id=:oid ORDER BY payment_date DESC""",{"oid":oid_a})
+                    # جلب كل الدفعات مع التواريخ
+                    pays = run_query("""SELECT payment_date, amount, payment_type, bank_name
+                        FROM customer_payments WHERE order_id=:oid ORDER BY payment_date ASC""",{"oid":oid_a})
+                    total_pays = float(pays['amount'].sum()) if not pays.empty else 0.0
+
+                    # الحساب الصحيح
+                    contract_val = float(ord_r['total_price'])
+                    contract_with_vat = contract_val * 1.15
+                    advance = float(ord_r['advance_paid'])
+                    total_collected = advance + total_pays
+                    real_balance = contract_with_vat - total_collected
+
+                    # عرض ملخص مالي
+                    f1,f2,f3 = st.columns(3)
+                    f1.metric("قيمة العقد بدون ضريبة", f"{contract_val:,.2f} ر")
+                    f2.metric("ضريبة القيمة المضافة 15%", f"{contract_val*0.15:,.2f} ر")
+                    f3.metric("إجمالي العقد شامل الضريبة", f"{contract_with_vat:,.2f} ر")
+
+                    st.markdown("---")
+
+                    # جدول حركة الحساب التفصيلي
+                    st.markdown("**📊 حركة الحساب التفصيلية:**")
+                    account_rows = []
+                    running_balance = contract_with_vat
+
+                    # السطر الأول: إجمالي العقد
+                    account_rows.append({
+                        "التاريخ": str(ord_r['order_date']),
+                        "البيان": "إجمالي قيمة العقد شامل الضريبة",
+                        "مدين (مستحق علينا)": f"{contract_with_vat:,.2f}",
+                        "دائن (مدفوع)": "—",
+                        "الرصيد المتبقي": f"{running_balance:,.2f}"
+                    })
+
+                    # الدفعة المقدمة
+                    if advance > 0:
+                        running_balance -= advance
+                        account_rows.append({
+                            "التاريخ": str(ord_r['order_date']),
+                            "البيان": "دفعة مقدمة عند التعاقد",
+                            "مدين (مستحق علينا)": "—",
+                            "دائن (مدفوع)": f"{advance:,.2f}",
+                            "الرصيد المتبقي": f"{running_balance:,.2f}"
+                        })
+
+                    # باقي الدفعات
                     if not pays.empty:
-                        st.write("**سجل الدفعات:**")
-                        st.dataframe(pays.rename(columns={"payment_date":"التاريخ","amount":"المبلغ","payment_type":"طريقة الدفع","bank_name":"البنك"}), use_container_width=True)
-                    else:
-                        st.info("لا توجد دفعات مسجلة.")
+                        for _, pay_row in pays.iterrows():
+                            running_balance -= float(pay_row['amount'])
+                            bank_info = f" | {pay_row['bank_name']}" if pay_row['bank_name'] else ""
+                            account_rows.append({
+                                "التاريخ": str(pay_row['payment_date']),
+                                "البيان": f"دفعة مستلمة - {pay_row['payment_type']}{bank_info}",
+                                "مدين (مستحق علينا)": "—",
+                                "دائن (مدفوع)": f"{float(pay_row['amount']):,.2f}",
+                                "الرصيد المتبقي": f"{running_balance:,.2f}"
+                            })
 
-                    if last_pay_date:
-                        st.caption(f"آخر دفعة مستلمة: {last_pay_date}")
+                    acc_df = pd.DataFrame(account_rows)
+                    st.dataframe(acc_df, use_container_width=True)
+
+                    # ملخص مالي نهائي
+                    st.markdown("---")
+                    fa1,fa2,fa3,fa4 = st.columns(4)
+                    fa1.metric("المقدم المستلم", f"{advance:,.2f} ر", help=f"تاريخ العقد: {ord_r['order_date']}")
+                    fa2.metric("الدفعات اللاحقة", f"{total_pays:,.2f} ر", help=f"عدد الدفعات: {len(pays)}")
+                    fa3.metric("إجمالي المحصّل", f"{total_collected:,.2f} ر")
+                    if real_balance > 0:
+                        fa4.metric("🔴 الرصيد المستحق", f"{real_balance:,.2f} ر")
+                    else:
+                        fa4.metric("🟢 تم السداد الكامل", f"{abs(real_balance):,.2f} ر زيادة")
 
                     st.markdown("---")
 
@@ -385,7 +440,7 @@ elif menu == "📦 الطلبيات":
                     "المسلّم": int(dm['t'].iloc[0]) if not dm.empty else 0,
                     "قيمة العقد": float(ord_r['total_price']),
                     "المدفوع": float(pm2['t'].iloc[0]) if not pm2.empty else 0,
-                    "المستحق": float(ord_r['total_price'])*1.15 - float(ord_r['advance_paid']) - (float(pm2['t'].iloc[0]) if not pm2.empty else 0)
+                    "المستحق": float(ord_r['total_price'])*1.15 - float(ord_r['advance_paid']) - (float(pm2['t'].iloc[0]) if not pm2.empty else 0.0)
                 })
             if summary_rows:
                 sum_df = pd.DataFrame(summary_rows)
