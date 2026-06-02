@@ -847,8 +847,13 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
             ul=["ماء","صرف","ديزل","حريق"]; tl=["دفّان","فوق الأرض"]; sl=["قيد التنفيذ","مكتملة","ملغاة"]
             e5,e6,e7 = st.columns(3)
             new_use = e5.selectbox("استخدام الخزان:", ul, index=ul.index(rr['tank_use']) if rr['tank_use'] in ul else 0, key="eu")
-            _cur_cap = str(rr['tank_capacity']) if rr['tank_capacity'] and str(rr['tank_capacity']) not in ("None","nan","") else ""
-            new_cap = e6.text_input("سعة الخزان (مثال: 8000 لتر):", value=_cur_cap, key="ec")
+            import pandas as _pd
+            _raw_cap = rr['tank_capacity']
+            _cur_cap = "" if (_raw_cap is None or str(_raw_cap).strip() in ("None","nan","NaN","")) else str(_raw_cap).strip()
+            new_cap = e6.text_input("💧 سعة الخزان (مثال: 8000 لتر):", value=_cur_cap, key="ec",
+                                     help="أدخل السعة مثل: 5000 لتر أو 10000L")
+            if not new_cap:
+                e6.warning("⚠️ لم تُدخل سعة الخزان")
             new_typ = e7.selectbox("نوع التركيب:", tl, index=tl.index(rr['tank_type']) if rr['tank_type'] in tl else 0, key="ety")
             new_stat = st.selectbox("الحالة:", sl, index=sl.index(rr['status']) if rr['status'] in sl else 0, key="es")
 
@@ -1929,304 +1934,409 @@ elif menu == "💰 الشحن والفواتير":
         s = str(v).strip()
         return s if s and s not in ("None","nan","NaN","") else "—"
 
-    def make_delivery_html(did, oid, customer_name, tank_use, tank_capacity, tank_type, qty, serials_list, driver_name, car_plate, driver_iqama, today_str):
-        tank_desc = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
-        sn_rows = "".join(f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{i+1}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-family:monospace;">{sn}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td></tr>' for i,sn in enumerate(serials_list))
-        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    def make_delivery_html(did, oid, customer_name, tank_use, tank_capacity, tank_type,
+                           qty, serials_list, driver_name, car_plate, driver_iqama, today_str):
+        tc  = _sv(tank_capacity)
+        tu  = _sv(tank_use)
+        tt  = _sv(tank_type)
+        tank_desc = f"خزان {tu} — سعة {tc} — {tt}"
+        tank_desc_en = f"Tank {tu} | Capacity: {tc} | Install: {tt}"
+        sn_rows = "".join(
+            f'''<tr>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:600;">{i+1}</td>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:11px;">{sn}</td>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
+            </tr>'''
+            for i,sn in enumerate(serials_list))
+        # QR data for delivery
+        qr_do_data = f"DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|TANKS:{qty}|TYPE:{tu}|CAP:{tc}|DATE:{today_str}|DRIVER:{driver_name}|PLATE:{car_plate}"
+        import json as _json
+        do_qr_json = _json.dumps([{"id":"do_qr","qr_text": qr_do_data}])
+        return f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
-.info-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:18px;}}
-.info-item .lbl{{font-size:10px;color:#94a3b8;display:block;}} .info-item .val{{font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+.badge{{background:#1E3A8A;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+.badge-en{{background:#f1f5f9;color:#1E3A8A;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
+.qr-hdr{{width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;overflow:hidden;}}
+.qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
+.info-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f1f5f9;border-radius:10px;padding:16px;margin-bottom:20px;}}
+.info-item .lbl{{font-size:10px;color:#94a3b8;display:block;margin-bottom:3px;}}
+.info-item .val{{font-size:13px;font-weight:700;color:#1e293b;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
+tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
+tbody tr:nth-child(even){{background:#f8fafc;}}
 .sig-section{{margin-top:40px;}}
-.sig-title{{font-size:12px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:20px;}}
+.sig-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:24px;}}
+.sig-title span{{font-size:11px;color:#64748b;margin-right:8px;direction:ltr;}}
 .sig-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;}}
 .sig-box{{text-align:center;}}
-.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;padding-top:0;}}
+.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
 .sig-ar{{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;}}
 .sig-en{{font-size:11px;color:#64748b;}}
-.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
+.footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;max-width:100%;}}}}
+</style>
+</head>
+<body>
 <div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">أمر التسليم رقم: {did}</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str}</p></div>
+  <div class="hdr-left">
+    <div style="font-size:32px;margin-bottom:6px;">🏭</div>
+    <h1>{FACTORY_NAME}</h1>
+    <p>{FACTORY_ADDRESS}</p>
+    <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
+  </div>
+  <div class="hdr-right">
+    <div class="badge">أمر التسليم رقم: {did}</div>
+    <div class="badge-en">Delivery Note No. {did}</div>
+    <div id="do_qr" class="qr-hdr"></div>
+    <p style="font-size:10px;color:#94a3b8;text-align:left;">التاريخ: {today_str}</p>
+  </div>
 </div>
 <div class="info-grid">
-  <div class="info-item"><span class="lbl">العميل</span><span class="val">{customer_name}</span></div>
-  <div class="info-item"><span class="lbl">رقم الطلبية</span><span class="val">{oid}</span></div>
-  <div class="info-item"><span class="lbl">التاريخ</span><span class="val">{today_str}</span></div>
-  <div class="info-item"><span class="lbl">نوع الخزان</span><span class="val">{tank_desc}</span></div>
-  <div class="info-item"><span class="lbl">عدد الخزانات</span><span class="val">{qty} خزان</span></div>
-  <div class="info-item"><span class="lbl">السائق</span><span class="val">{driver_name}</span></div>
-  <div class="info-item"><span class="lbl">رقم اللوحة</span><span class="val">{car_plate}</span></div>
-  <div class="info-item"><span class="lbl">رقم الإقامة</span><span class="val">{driver_iqama}</span></div>
+  <div class="info-item"><span class="lbl">العميل / Customer</span><span class="val">{customer_name}</span></div>
+  <div class="info-item"><span class="lbl">رقم الطلبية / Order No.</span><span class="val">{oid}</span></div>
+  <div class="info-item"><span class="lbl">التاريخ / Date</span><span class="val">{today_str}</span></div>
+  <div class="info-item"><span class="lbl">نوع الخزان / Tank Type</span><span class="val">{tu}</span></div>
+  <div class="info-item"><span class="lbl">السعة / Capacity</span><span class="val">{tc}</span></div>
+  <div class="info-item"><span class="lbl">نوع التركيب / Installation</span><span class="val">{tt}</span></div>
+  <div class="info-item"><span class="lbl">عدد الخزانات / Qty</span><span class="val">{qty} خزان</span></div>
+  <div class="info-item"><span class="lbl">اسم السائق / Driver</span><span class="val">{driver_name}</span></div>
+  <div class="info-item"><span class="lbl">رقم اللوحة / Plate</span><span class="val">{car_plate}</span></div>
+  <div class="info-item"><span class="lbl">رقم الإقامة / Iqama</span><span class="val">{driver_iqama}</span></div>
 </div>
-<table><thead><tr><th>#</th><th>الرقم التسلسلي</th><th>وصف الخزان</th></tr></thead><tbody>{sn_rows}</tbody></table>
+<table>
+  <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Tank Description</th></tr></thead>
+  <tbody>{sn_rows}</tbody>
+</table>
 <div class="sig-section">
-  <div class="sig-title">التوقيعات / Signatures</div>
+  <div class="sig-title">التوقيعات <span>/ Signatures</span></div>
   <div class="sig-grid">
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع السائق واسمه</div><div class="sig-en">Driver Signature &amp; Name</div></div>
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع موقع الاستلام</div><div class="sig-en">Receiver's Signature</div></div>
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الموقع</div><div class="sig-en">Site Stamp</div></div>
   </div>
 </div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+<div class="footer">
+  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+  <span>نظام ERP v7.0 | {today_str}</span>
+</div>
+<script>
+var doData = {do_qr_json};
+doData.forEach(function(item){{
+  var el=document.getElementById(item.id);
+  if(el) new QRCode(el,{{text:item.qr_text,width:80,height:80,colorDark:"#1E3A8A",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
+}});
+</script>
 </body></html>"""
 
-    def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number, tank_use, tank_capacity, tank_type, qty, unit_price, serials_list, sub, vat, grand, adv_d, net, today_str):
-        tank_desc = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
-        sn_list_html = ", ".join(serials_list) if serials_list else "—"
-        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number,
+                          tank_use, tank_capacity, tank_type,
+                          qty, unit_price, serials_list,
+                          sub, vat, grand, adv_d, net, today_str):
+        tc  = _sv(tank_capacity)
+        tu  = _sv(tank_use)
+        tt  = _sv(tank_type)
+        tank_desc    = f"خزان {tu} — سعة {tc} — {tt}"
+        tank_desc_en = f"Fibreglass Tank {tu} | Capacity: {tc} | {tt}"
+        sn_rows_inv  = "".join(
+            f'''<tr>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:600;">{i+1}</td>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:11px;">{sn}</td>
+              <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
+            </tr>'''
+            for i,sn in enumerate(serials_list))
+        import json as _json
+        qr_inv_data  = f"INV:{inv_n}|DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|QTY:{qty}|TYPE:{tu}|CAP:{tc}|TOTAL:{grand:.2f}|NET:{net:.2f}|DATE:{today_str}|VAT_REG:{tax_number}"
+        inv_qr_json  = _json.dumps([{"id":"inv_qr","qr_text": qr_inv_data}])
+        return f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.inv-badge{{background:#dc2626;color:#fff;padding:8px 22px;border-radius:20px;font-size:16px;font-weight:800;}}
-.parties{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:18px;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+.badge-inv{{background:#dc2626;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+.badge-en{{background:#fff0f0;color:#dc2626;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #dc2626;direction:ltr;}}
+.qr-hdr{{width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;overflow:hidden;}}
+.qr-hdr canvas,.qr-hdr img{{width:90px!important;height:90px!important;}}
+.parties{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}}
 .party-box{{background:#f8fafc;border-radius:10px;padding:14px;border-right:4px solid #1E3A8A;}}
-.party-box h3{{color:#1E3A8A;font-size:13px;margin-bottom:8px;}}
-.party-box p{{font-size:12px;margin:3px 0;color:#475569;}}
+.party-box h3{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}}
+.party-box p{{font-size:11px;margin:3px 0;color:#475569;}}
 table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
 thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
-td{{padding:9px 10px;border:1px solid #e2e8f0;text-align:center;font-size:12px;}}
-tr:nth-child(even){{background:#f8fafc;}}
-.totals-section{{background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:18px;}}
-.total-row{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:13px;}}
-.total-row:last-child{{border-bottom:none;}}
-.net-due{{background:#1E3A8A;color:#fff;border-radius:10px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}}
-.net-due .lbl{{font-size:13px;opacity:.85;}}
-.net-due .amount{{font-size:22px;font-weight:800;}}
-.sn-box{{background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:14px;font-size:11px;color:#475569;line-height:1.8;}}
-.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
+tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
+tbody tr:nth-child(even){{background:#f8fafc;}}
+.sn-table thead th{{background:#374151;}}
+.totals{{background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:16px;}}
+.trow{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:13px;}}
+.trow:last-child{{border:none;}}
+.net-box{{background:#1E3A8A;color:#fff;border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}}
+.net-box .lbl{{font-size:13px;opacity:.85;}}
+.net-box .lbl-en{{font-size:10px;opacity:.65;}}
+.net-box .amount{{font-size:24px;font-weight:800;}}
+.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;max-width:100%;}}}}
+</style>
+</head>
+<body>
 <div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="inv-badge">فاتورة ضريبية رسمية</div><p style="margin-top:8px;color:#64748b;font-size:11px;">رقم الفاتورة: {inv_n}</p><p style="color:#64748b;font-size:11px;">التاريخ: {today_str}</p><p style="color:#64748b;font-size:11px;">أمر التسليم: #{did}</p></div>
+  <div class="hdr-left">
+    <div style="font-size:32px;margin-bottom:6px;">🏭</div>
+    <h1>{FACTORY_NAME}</h1>
+    <p>{FACTORY_ADDRESS}</p>
+    <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
+    <p style="margin-top:6px;color:#64748b;">رقم الفاتورة: <b>{inv_n}</b> &nbsp;|&nbsp; التاريخ: {today_str}</p>
+  </div>
+  <div class="hdr-right">
+    <div class="badge-inv">فاتورة ضريبية رسمية</div>
+    <div class="badge-en">TAX INVOICE</div>
+    <div id="inv_qr" class="qr-hdr"></div>
+    <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق / Scan to Verify</p>
+  </div>
 </div>
 <div class="parties">
-  <div class="party-box"><h3>🏭 البائع</h3><p><b>{FACTORY_NAME}</b></p><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div class="party-box"><h3>👤 المشتري</h3><p><b>{customer_name}</b></p><p>س.ت: {cr_number}</p><p>الرقم الضريبي: {tax_number}</p></div>
+  <div class="party-box">
+    <h3>🏭 البائع / Seller</h3>
+    <p><b>{FACTORY_NAME}</b></p>
+    <p>{FACTORY_ADDRESS}</p>
+    <p>س.ت: {FACTORY_CR}</p>
+    <p>الرقم الضريبي: {FACTORY_TAX}</p>
+  </div>
+  <div class="party-box">
+    <h3>👤 المشتري / Buyer</h3>
+    <p><b>{customer_name}</b></p>
+    <p>س.ت: {cr_number}</p>
+    <p>الرقم الضريبي: {tax_number}</p>
+    <p>أمر التسليم: #{did}</p>
+  </div>
 </div>
 <table>
-  <thead><tr><th>الوصف</th><th>الكمية</th><th>سعر الوحدة (ر)</th><th>الإجمالي (ر)</th></tr></thead>
+  <thead>
+    <tr>
+      <th>الوصف / Description</th>
+      <th>النوع / Type</th>
+      <th>السعة / Capacity</th>
+      <th>الكمية / Qty</th>
+      <th>سعر الوحدة / Unit Price</th>
+      <th>الإجمالي / Total</th>
+    </tr>
+  </thead>
   <tbody>
-    <tr><td style="text-align:right;padding-right:12px;">{tank_desc}</td><td>{qty}</td><td>{unit_price:,.2f}</td><td>{sub:,.2f}</td></tr>
+    <tr>
+      <td style="text-align:right;padding-right:12px;">خزانات فايبر جلاس<br><span style="font-size:10px;color:#64748b;">Fibreglass Tanks</span></td>
+      <td style="text-align:center;">{tu}</td>
+      <td style="text-align:center;">{tc}</td>
+      <td style="text-align:center;">{qty}</td>
+      <td style="text-align:center;">{unit_price:,.2f} ر</td>
+      <td style="text-align:center;font-weight:700;">{sub:,.2f} ر</td>
+    </tr>
   </tbody>
 </table>
-<div class="sn-box"><b>الأرقام التسلسلية للخزانات:</b><br>{sn_list_html}</div>
-<div class="totals-section">
-  <div class="total-row"><span>المبلغ قبل الضريبة</span><span>{sub:,.2f} ر</span></div>
-  <div class="total-row"><span>ضريبة القيمة المضافة 15%</span><span>{vat:,.2f} ر</span></div>
-  <div class="total-row"><span>الإجمالي شامل الضريبة</span><span style="font-weight:700;">{grand:,.2f} ر</span></div>
-  <div class="total-row"><span>خصم الدفعة المقدمة</span><span style="color:#dc2626;">- {adv_d:,.2f} ر</span></div>
+<p style="font-size:12px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:8px;">الأرقام التسلسلية للخزانات / Tank Serial Numbers</p>
+<table class="sn-table">
+  <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Description</th></tr></thead>
+  <tbody>{sn_rows_inv}</tbody>
+</table>
+<div class="totals">
+  <div class="trow"><span>المبلغ قبل الضريبة / Subtotal</span><span>{sub:,.2f} ر</span></div>
+  <div class="trow"><span>ضريبة القيمة المضافة 15% / VAT 15%</span><span>{vat:,.2f} ر</span></div>
+  <div class="trow"><span style="font-weight:700;">الإجمالي شامل الضريبة / Total incl. VAT</span><span style="font-weight:700;">{grand:,.2f} ر</span></div>
+  <div class="trow"><span>خصم الدفعة المقدمة / Advance Deducted</span><span style="color:#dc2626;">- {adv_d:,.2f} ر</span></div>
 </div>
-<div class="net-due">
-  <div><div class="lbl">الصافي المستحق</div><div style="font-size:11px;opacity:.7;">Net Amount Due</div></div>
+<div class="net-box">
+  <div><div class="lbl">الصافي المستحق</div><div class="lbl-en">Net Amount Due</div></div>
   <div class="amount">{net:,.2f} ريال</div>
 </div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+<div class="footer">
+  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+  <span>نظام ERP v7.0 | {today_str}</span>
+</div>
+<script>
+var invData = {inv_qr_json};
+invData.forEach(function(item){{
+  var el=document.getElementById(item.id);
+  if(el) new QRCode(el,{{text:item.qr_text,width:90,height:90,colorDark:"#dc2626",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
+}});
+</script>
 </body></html>"""
 
-    def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type, order_id, customer_name, today_str):
-        tank_desc_ar = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
-        tank_desc_en = f"Tank {_sv(tank_use)} | Cap. {_sv(tank_capacity)} | {_sv(tank_type)}"
-
-        # بناء بيانات كل بطاقة كـ JSON لاستخدامها في JS
-        import json
+    def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type,
+                             order_id, customer_name, today_str):
+        tc  = _sv(tank_capacity)
+        tu  = _sv(tank_use)
+        tt  = _sv(tank_type)
+        tank_desc_ar = f"خزان {tu} — سعة {tc} — {tt}"
+        tank_desc_en = f"Tank {tu} | Capacity: {tc} | {tt}"
+        import json as _json
         labels_data = []
-        for i, sn in enumerate(serials_list):
-            qr_text = f"SN:{sn}|ORDER:{order_id}|TYPE:{tank_use}|CAP:{tank_capacity}|INSTALL:{tank_type}|MFG:{FACTORY_NAME}|DATE:{today_str}"
-            labels_data.append({
-                "id": f"qr_{i}",
-                "sn": sn,
-                "qr_text": qr_text,
-                "index": i + 1
-            })
+        for i,sn in enumerate(serials_list):
+            qr_text = f"SN:{sn}|ORDER:{order_id}|TYPE:{tu}|CAP:{tc}|INSTALL:{tt}|CLIENT:{customer_name}|MFG:{FACTORY_NAME}|DATE:{today_str}|SEQ:{i+1}OF{len(serials_list)}"
+            labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
+        labels_json = _json.dumps(labels_data, ensure_ascii=False)
 
-        labels_json = json.dumps(labels_data, ensure_ascii=False)
-
-        # HTML البطاقات — div فارغ لكل QR يملأه JS
-        label_divs = ""
+        # كل بطاقة في صفحة A4 مستقلة
+        label_pages = ""
         for item in labels_data:
-            label_divs += f"""
-            <div class="label">
-              <div class="label-header">
-                <span>🏭 {FACTORY_NAME}</span>
-                <span style="font-size:10px;opacity:.85;">Fibreglass Tank Manufacturer</span>
-              </div>
-              <div class="label-body">
-                <div class="qr-wrap">
-                  <div id="{item['id']}" class="qr-canvas"></div>
-                  <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
-                </div>
-                <div class="qr-info">
-                  <div class="info-row sn-row">{item['sn']}</div>
-                  <div class="info-row"><span class="lbl-ar">النوع:</span> {tank_desc_ar}</div>
-                  <div class="info-row ltr"><span class="lbl-en">Type:</span> {tank_desc_en}</div>
-                  <div class="info-row"><span class="lbl-ar">الطلبية:</span> {order_id}</div>
-                  <div class="info-row"><span class="lbl-ar">العميل:</span> {customer_name}</div>
-                  <div class="info-row"><span class="lbl-ar">تاريخ الإنتاج:</span> {today_str}</div>
-                  <div class="info-row ltr"><span class="lbl-en">Prod. Date:</span> {today_str}</div>
-                  <div class="info-row"><span class="lbl-ar">خزان رقم:</span> {item['index']} من {len(serials_list)}</div>
-                </div>
-              </div>
-              <div class="label-footer">
-                <span>{FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-                <span>{today_str}</span>
-              </div>
-            </div>"""
+            label_pages += f"""
+<div class="a4-page">
+  <div class="card">
+    <div class="card-header">
+      <div class="header-left">
+        <div class="factory-icon">🏭</div>
+        <div>
+          <div class="factory-name">{FACTORY_NAME}</div>
+          <div class="factory-sub">Fibreglass Tank Manufacturer</div>
+          <div class="factory-addr">{FACTORY_ADDRESS}</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="card-badge">بطاقة تعريف الخزان</div>
+        <div class="card-badge-en">Tank ID Card</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="qr-section">
+        <div id="{item['id']}" class="qr-box"></div>
+        <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
+        <div class="seq-badge">خزان {item['index']} من {len(serials_list)}<br>Tank {item['index']} of {len(serials_list)}</div>
+      </div>
+      <div class="info-section">
+        <div class="sn-display">{item['sn']}</div>
+        <div class="info-grid-card">
+          <div class="ig-item"><span class="ig-lbl">نوع الاستخدام</span><span class="ig-val">{tu}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Type of Use</span><span class="ig-val ltr">{tu}</span></div>
+          <div class="ig-item"><span class="ig-lbl">السعة</span><span class="ig-val">{tc}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Capacity</span><span class="ig-val ltr">{tc}</span></div>
+          <div class="ig-item"><span class="ig-lbl">نوع التركيب</span><span class="ig-val">{tt}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Installation</span><span class="ig-val ltr">{tt}</span></div>
+          <div class="ig-item"><span class="ig-lbl">رقم الطلبية</span><span class="ig-val">{order_id}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Order No.</span><span class="ig-val ltr">{order_id}</span></div>
+          <div class="ig-item"><span class="ig-lbl">العميل</span><span class="ig-val">{customer_name}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Customer</span><span class="ig-val ltr">{customer_name}</span></div>
+          <div class="ig-item"><span class="ig-lbl">تاريخ الإنتاج</span><span class="ig-val">{today_str}</span></div>
+          <div class="ig-item"><span class="ig-lbl">Production Date</span><span class="ig-val ltr">{today_str}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>{FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+      <span>نظام ERP v7.0 | {today_str}</span>
+    </div>
+  </div>
+</div>"""
 
         return f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>بطاقات QR — {today_str}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:24px;color:#1e293b;}}
-h1.page-title{{
-  text-align:center;font-size:17px;font-weight:800;color:#1E3A8A;
-  margin-bottom:6px;
+body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
+.a4-page{{
+  width:210mm;min-height:297mm;
+  background:#fff;margin:0 auto 20px auto;
+  display:flex;align-items:center;justify-content:center;
+  padding:20mm;
+  page-break-after:always;
 }}
-.page-subtitle{{text-align:center;font-size:11px;color:#64748b;margin-bottom:20px;}}
-.labels-grid{{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:18px;
-  max-width:900px;
-  margin:0 auto;
+.card{{
+  width:100%;border:3px solid #1E3A8A;border-radius:16px;
+  overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.15);
 }}
-.label{{
-  background:#fff;
-  border:2.5px solid #1E3A8A;
-  border-radius:14px;
-  overflow:hidden;
-  page-break-inside:avoid;
-  box-shadow:0 2px 8px rgba(30,58,138,.08);
+.card-header{{
+  background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
+  color:#fff;padding:18px 22px;
+  display:flex;justify-content:space-between;align-items:center;
 }}
-.label-header{{
-  background:linear-gradient(135deg,#1E3A8A,#2563eb);
-  color:#fff;
-  padding:10px 14px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  font-size:12px;
-  font-weight:700;
+.header-left{{display:flex;gap:14px;align-items:center;}}
+.factory-icon{{font-size:38px;}}
+.factory-name{{font-size:18px;font-weight:800;margin-bottom:3px;}}
+.factory-sub{{font-size:11px;opacity:.8;direction:ltr;}}
+.factory-addr{{font-size:10px;opacity:.7;margin-top:2px;}}
+.header-right{{text-align:center;}}
+.card-badge{{background:rgba(255,255,255,.2);padding:6px 16px;border-radius:20px;font-size:14px;font-weight:700;margin-bottom:4px;}}
+.card-badge-en{{font-size:11px;opacity:.8;direction:ltr;}}
+.card-body{{display:flex;gap:0;}}
+.qr-section{{
+  background:#f8fafc;border-left:1px solid #e2e8f0;
+  padding:24px 20px;display:flex;flex-direction:column;
+  align-items:center;gap:12px;min-width:160px;
 }}
-.label-body{{
-  display:flex;
-  gap:14px;
-  padding:14px;
-  align-items:flex-start;
+.qr-box{{
+  width:130px;height:130px;
+  border:3px solid #1E3A8A;border-radius:10px;
+  overflow:hidden;background:#fff;
 }}
-.qr-wrap{{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  flex-shrink:0;
+.qr-box canvas,.qr-box img{{width:130px!important;height:130px!important;display:block;}}
+.qr-caption{{font-size:11px;color:#64748b;text-align:center;line-height:1.6;}}
+.seq-badge{{
+  background:#1E3A8A;color:#fff;
+  padding:6px 12px;border-radius:8px;
+  font-size:11px;font-weight:700;text-align:center;line-height:1.6;
 }}
-.qr-canvas{{
-  width:100px!important;
-  height:100px!important;
-  border:3px solid #1E3A8A;
-  border-radius:8px;
-  overflow:hidden;
-  background:#fff;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+.info-section{{flex:1;padding:24px 22px;}}
+.sn-display{{
+  font-family:monospace;font-size:16px;font-weight:800;
+  color:#1E3A8A;background:#eff6ff;
+  padding:10px 14px;border-radius:8px;
+  margin-bottom:16px;border:2px solid #bfdbfe;
+  text-align:center;letter-spacing:1px;
 }}
-.qr-canvas canvas,
-.qr-canvas img{{
-  width:100px!important;
-  height:100px!important;
-  display:block;
-}}
-.qr-caption{{
-  font-size:9px;
-  color:#94a3b8;
-  text-align:center;
-  margin-top:5px;
-  line-height:1.4;
-}}
-.qr-info{{flex:1;}}
-.info-row{{
-  font-size:11px;
-  color:#475569;
-  margin-bottom:4px;
-  line-height:1.5;
-}}
-.info-row.ltr{{direction:ltr;text-align:left;color:#64748b;}}
-.sn-row{{
-  font-family:monospace;
-  font-size:10.5px;
-  font-weight:700;
-  color:#1E3A8A;
-  background:#eff6ff;
-  padding:4px 7px;
-  border-radius:5px;
-  margin-bottom:6px;
-  word-break:break-all;
-  border:1px solid #bfdbfe;
-}}
-.lbl-ar{{font-weight:700;color:#1e293b;}}
-.lbl-en{{font-weight:600;color:#475569;}}
-.label-footer{{
-  border-top:1px solid #e2e8f0;
-  padding:6px 14px;
-  display:flex;
-  justify-content:space-between;
-  font-size:9px;
-  color:#94a3b8;
-  background:#f8fafc;
+.info-grid-card{{display:grid;grid-template-columns:1fr 1fr;gap:8px;}}
+.ig-item{{display:flex;flex-direction:column;background:#f8fafc;border-radius:6px;padding:8px 10px;}}
+.ig-lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}}
+.ig-val{{font-size:12px;font-weight:700;color:#1e293b;}}
+.ig-val.ltr{{direction:ltr;}}
+.card-footer{{
+  background:#f1f5f9;border-top:1px solid #e2e8f0;
+  padding:10px 22px;display:flex;
+  justify-content:space-between;font-size:10px;color:#64748b;
 }}
 @media print{{
-  body{{background:#fff;padding:10px;}}
-  .labels-grid{{grid-template-columns:repeat(2,1fr);gap:12px;}}
-  .label{{page-break-inside:avoid;box-shadow:none;}}
-  h1.page-title,.page-subtitle{{display:block;}}
+  body{{background:#fff;}}
+  .a4-page{{
+    width:210mm;min-height:297mm;margin:0;padding:15mm;
+    page-break-after:always;box-shadow:none;
+  }}
+  .card{{box-shadow:none;}}
 }}
 </style>
 </head>
 <body>
-<h1 class="page-title">🏷️ بطاقات التعريف والأرقام التسلسلية</h1>
-<div class="page-subtitle">طلبية: {order_id} | العميل: {customer_name} | تاريخ: {today_str} | عدد الخزانات: {len(serials_list)}</div>
-<div class="labels-grid">
-{label_divs}
-</div>
+{label_pages}
 <script>
-// توليد QR Code لكل بطاقة
 var labelsData = {labels_json};
-labelsData.forEach(function(item) {{
-  var el = document.getElementById(item.id);
-  if (el) {{
-    new QRCode(el, {{
-      text: item.qr_text,
-      width: 100,
-      height: 100,
-      colorDark: "#1E3A8A",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    }});
-  }}
+labelsData.forEach(function(item){{
+  var el=document.getElementById(item.id);
+  if(el) new QRCode(el,{{
+    text:item.qr_text,
+    width:130,height:130,
+    colorDark:"#1E3A8A",colorLight:"#ffffff",
+    correctLevel:QRCode.CorrectLevel.H
+  }});
 }});
 </script>
-</body>
-</html>"""
+</body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
     with tabs[0]:
@@ -2342,36 +2452,40 @@ labelsData.forEach(function(item) {{
         dldf = run_query("""SELECT d.delivery_id,d.order_id,d.shipped_qty,d.delivery_date,
             o.unit_price,o.advance_paid,o.qty as tq,o.tank_use,o.tank_capacity,o.tank_type,
             c.trade_name,c.cr_number,c.tax_number
-            FROM delivery_orders d JOIN orders o ON d.order_id=o.order_id JOIN customers c ON o.customer_id=c.id""")
+            FROM delivery_orders d JOIN orders o ON d.order_id=o.order_id JOIN customers c ON o.customer_id=c.id
+            ORDER BY d.delivery_id DESC""")
         if dldf.empty:
             st.info("لا توجد أوامر تسليم.")
         else:
             dl_opts = [f"أمر #{r['delivery_id']} | {r['order_id']} | {r['trade_name']} | {r['shipped_qty']} خزان" for _,r in dldf.iterrows()]
-            sel_dl = st.selectbox("أمر التسليم:", dl_opts)
+            sel_dl = st.selectbox("اختر أمر التسليم:", dl_opts, key="inv_tab_sel")
             did2 = int(sel_dl.split("#")[1].split(" ")[0])
-            dr = dldf[dldf['delivery_id']==did2].iloc[0]
-            sub  = float(dr['shipped_qty']) * float(dr['unit_price'])
-            adv_d= (float(dr['advance_paid'])/float(dr['tq']))*float(dr['shipped_qty']) if float(dr['tq'])>0 else 0
-            vat  = sub*0.15; grand=sub+vat; net=grand-adv_d
-            inv_n= f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
+            dr   = dldf[dldf['delivery_id']==did2].iloc[0]
+
+            sub   = float(dr['shipped_qty']) * float(dr['unit_price'])
+            adv_d = (float(dr['advance_paid'])/float(dr['tq']))*float(dr['shipped_qty']) if float(dr['tq'])>0 else 0
+            vat   = sub * 0.15
+            grand = sub + vat
+            net   = grand - adv_d
             today_str_inv = datetime.date.today().strftime("%Y/%m/%d")
 
-            serials_inv = run_query("""SELECT pt.serial_number FROM production_tanks pt
-                JOIN production_days pd ON pt.shift_id=pd.id
-                WHERE pt.order_id=:oid
-                ORDER BY pt.id
-                LIMIT :lim OFFSET :off""",
-                {"oid": str(dr['order_id']),
-                 "lim": int(dr['shipped_qty']),
-                 "off": max(0, int(run_query("SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",{"oid":str(dr['order_id']),"did":did2})['t'].iloc[0]))})
-            sn_list_inv = serials_inv['serial_number'].tolist() if not serials_inv.empty else []
+            # جلب الفاتورة المحفوظة إن وُجدت
+            saved_inv = run_query("SELECT invoice_id,invoice_date FROM sales_invoices WHERE delivery_id=:did",{"did":did2})
+            if not saved_inv.empty:
+                inv_n = f"INV-{did2}-{str(saved_inv['invoice_date'].iloc[0]).replace('-','')[:8]}"
+                st.success(f"✅ الفاتورة محفوظة مسبقاً — رقم: {inv_n}")
+            else:
+                inv_n = f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
+                st.info(f"📋 فاتورة جديدة: {inv_n} — ستُحفظ تلقائياً عند الطباعة")
 
-            st.markdown(f"#### 🧾 فاتورة: {inv_n}")
-            inv_html2 = make_invoice_html(inv_n, did2, dr['order_id'], dr['trade_name'],
-                str(dr['cr_number'] or '—'), str(dr['tax_number'] or '—'),
-                str(dr['tank_use']), str(dr['tank_capacity'] or '—'), str(dr['tank_type']),
-                int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
-                sub, vat, grand, adv_d, net, today_str_inv)
+            # جلب الأرقام التسلسلية
+            _prev_off_inv = int(run_query(
+                "SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",
+                {"oid":str(dr['order_id']),"did":did2})['t'].iloc[0])
+            serials_inv = run_query(
+                "SELECT serial_number FROM production_tanks WHERE order_id=:oid ORDER BY id LIMIT :lim OFFSET :off",
+                {"oid":str(dr['order_id']),"lim":int(dr['shipped_qty']),"off":max(0,_prev_off_inv)})
+            sn_list_inv = serials_inv['serial_number'].tolist() if not serials_inv.empty else []
 
             c1f,c2f,c3f,c4f = st.columns(4)
             c1f.metric("قبل الضريبة", f"{sub:,.2f} ر")
@@ -2379,52 +2493,293 @@ labelsData.forEach(function(item) {{
             c3f.metric("إجمالي", f"{grand:,.2f} ر")
             c4f.metric("الصافي المستحق", f"{net:,.2f} ر")
 
-            col_b1,col_b2 = st.columns(2)
-            col_b1.download_button("🖨️ طباعة الفاتورة (HTML)", inv_html2.encode('utf-8'), f"{inv_n}.html", "text/html; charset=utf-8")
-            if col_b2.button("💾 حفظ الفاتورة في قاعدة البيانات"):
-                # تحقق من عدم التكرار
-                exists = run_query("SELECT invoice_id FROM sales_invoices WHERE delivery_id=:did",{"did":did2})
-                if not exists.empty:
-                    st.warning("⚠️ هذه الفاتورة محفوظة مسبقاً.")
-                else:
-                    if run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
-                                 {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net}):
-                        st.success(f"✅ تم حفظ الفاتورة {inv_n}!")
+            inv_html2 = make_invoice_html(inv_n, did2, dr['order_id'], dr['trade_name'],
+                str(dr['cr_number'] or '—'), str(dr['tax_number'] or '—'),
+                str(dr['tank_use']), str(dr['tank_capacity'] or '—'), str(dr['tank_type']),
+                int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
+                sub, vat, grand, adv_d, net, today_str_inv)
+
+            col_b1, col_b2 = st.columns(2)
+            col_b1.download_button("🖨️ طباعة الفاتورة (HTML)",
+                inv_html2.encode('utf-8'), f"{inv_n}.html", "text/html; charset=utf-8", key=f"dl_inv2_{did2}")
+            # حفظ تلقائي إذا لم تكن محفوظة
+            if saved_inv.empty:
+                if col_b2.button("💾 حفظ الفاتورة", key=f"save_inv_{did2}"):
+                    run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
+                              {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net})
+                    st.success(f"✅ تم حفظ الفاتورة {inv_n}!")
+                    st.rerun()
+            else:
+                col_b2.success("✅ محفوظة في قاعدة البيانات")
 
     # ===== تبويب 3: سند قبض =====
     with tabs[2]:
         if 'rk' not in st.session_state: st.session_state.rk = 0
-        cdf4 = run_query("SELECT id,trade_name FROM customers")
+        if 'receipt_html' not in st.session_state: st.session_state.receipt_html = None
+        if 'receipt_ready' not in st.session_state: st.session_state.receipt_ready = False
+
+        cdf4 = run_query("SELECT id,trade_name,cr_number,tax_number FROM customers ORDER BY trade_name")
         if not cdf4.empty:
-            with st.form(f"rf_{st.session_state.rk}", clear_on_submit=True):
-                sc4 = st.selectbox("العميل:", cdf4['trade_name'].tolist())
-                cid4 = int(cdf4[cdf4['trade_name']==sc4]['id'].iloc[0])
-                odf4 = run_query("SELECT order_id FROM orders WHERE customer_id=:c",{"c":cid4})
-                so4 = st.selectbox("الطلبية:", odf4['order_id'].tolist() if not odf4.empty else ["—"])
-                pa4 = st.number_input("المبلغ:", min_value=0.0, value=0.0)
-                pt4 = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"])
-                pb4 = st.text_input("البنك:")
-                if st.form_submit_button("💵 اعتماد"):
-                    if run_write("INSERT INTO customer_payments(customer_id,order_id,amount,payment_type,bank_name) VALUES(:ci,:oi,:a,:pt,:b)",{"ci":cid4,"oi":so4,"a":pa4,"pt":pt4,"b":pb4}):
-                        st.success(f"✅ تم تسجيل {pa4:,.2f} ريال!")
-                        st.session_state.rk+=1; st.rerun()
+            rk = st.session_state.rk
+            sc4 = st.selectbox("العميل:", cdf4['trade_name'].tolist(), key=f"rc_cust_{rk}")
+            cid4 = int(cdf4[cdf4['trade_name']==sc4]['id'].iloc[0])
+            cust_row4 = cdf4[cdf4['trade_name']==sc4].iloc[0]
+            odf4 = run_query("SELECT order_id FROM orders WHERE customer_id=:c ORDER BY order_date DESC",{"c":cid4})
+            so4 = st.selectbox("الطلبية:", odf4['order_id'].tolist() if not odf4.empty else ["—"], key=f"rc_ord_{rk}")
+            c_r1,c_r2 = st.columns(2)
+            pa4 = c_r1.number_input("المبلغ (ريال):", min_value=0.0, value=0.0, key=f"rc_amt_{rk}")
+            pt4 = c_r2.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"], key=f"rc_pt_{rk}")
+            pb4 = st.text_input("اسم البنك / رقم الحوالة:", key=f"rc_bank_{rk}")
+
+            if st.button("💵 اعتماد وإصدار سند القبض", type="primary", key=f"rc_btn_{rk}"):
+                if pa4 <= 0:
+                    st.error("أدخل مبلغاً صحيحاً!")
+                else:
+                    ok_r = run_write(
+                        "INSERT INTO customer_payments(customer_id,order_id,amount,payment_type,bank_name) VALUES(:ci,:oi,:a,:pt,:b)",
+                        {"ci":cid4,"oi":so4,"a":pa4,"pt":pt4,"b":pb4})
+                    if ok_r:
+                        # جلب رقم السند
+                        pay_id = run_query(
+                            "SELECT id FROM customer_payments WHERE customer_id=:c ORDER BY id DESC LIMIT 1",
+                            {"c":cid4})
+                        receipt_no = int(pay_id['id'].iloc[0]) if not pay_id.empty else rk+1
+                        today_r = datetime.date.today().strftime("%Y/%m/%d")
+
+                        # حساب الرصيد المتبقي للطلبية
+                        order_info = run_query(
+                            "SELECT total_price,advance_paid FROM orders WHERE order_id=:oid",{"oid":so4})
+                        contract_val = float(order_info['total_price'].iloc[0])*1.15 if not order_info.empty else 0
+                        total_paid_so_far = float(run_query(
+                            "SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE order_id=:oid",
+                            {"oid":so4})['t'].iloc[0])
+                        adv_order = float(order_info['advance_paid'].iloc[0]) if not order_info.empty else 0
+                        remaining_after = contract_val - adv_order - total_paid_so_far
+
+                        import json as _json
+                        qr_rcpt = f"RECEIPT:{receipt_no}|CLIENT:{sc4}|ORDER:{so4}|AMOUNT:{pa4:.2f}|METHOD:{pt4}|DATE:{today_r}"
+                        rcpt_qr_json = _json.dumps([{"id":"rcpt_qr","qr_text":qr_rcpt}])
+
+                        receipt_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:800px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:14px;margin-bottom:20px;}}
+.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+.rcpt-badge{{background:#16a34a;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+.rcpt-badge-en{{background:#f0fdf4;color:#16a34a;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
+.qr-hdr{{width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;overflow:hidden;}}
+.qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
+.amount-box{{
+  background:linear-gradient(135deg,#16a34a,#15803d);
+  color:#fff;border-radius:14px;padding:20px 24px;
+  display:flex;justify-content:space-between;align-items:center;
+  margin:20px 0;
+}}
+.amount-box .lbl{{font-size:14px;opacity:.85;}}
+.amount-box .lbl-en{{font-size:11px;opacity:.65;direction:ltr;}}
+.amount-box .amount{{font-size:32px;font-weight:800;}}
+.info-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px;}}
+.ig{{background:#f8fafc;border-radius:8px;padding:12px;border-right:3px solid #16a34a;}}
+.ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:4px;}}
+.ig .val{{font-size:13px;font-weight:700;}}
+.balance-box{{background:#eff6ff;border-radius:10px;padding:14px;margin-bottom:20px;border:1px solid #bfdbfe;}}
+.balance-box h4{{color:#1E3A8A;font-size:13px;margin-bottom:8px;}}
+.b-row{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #e2e8f0;}}
+.b-row:last-child{{border:none;font-weight:700;font-size:13px;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:40px;gap:20px;}}
+.sig-box{{text-align:center;flex:1;}}
+.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
+.sig-lbl-ar{{font-size:12px;font-weight:700;}}
+.sig-lbl-en{{font-size:10px;color:#64748b;}}
+.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;max-width:100%;}}}}
+</style></head><body>
+<div class="hdr">
+  <div class="hdr-left">
+    <div style="font-size:32px;margin-bottom:6px;">🏭</div>
+    <h1>{FACTORY_NAME}</h1>
+    <p>{FACTORY_ADDRESS}</p>
+    <p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p>
+    <p style="margin-top:6px;">رقم السند: <b>{receipt_no}</b> | التاريخ: {today_r}</p>
+  </div>
+  <div class="hdr-right">
+    <div class="rcpt-badge">سند قبض</div>
+    <div class="rcpt-badge-en">Payment Receipt</div>
+    <div id="rcpt_qr" class="qr-hdr"></div>
+    <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق</p>
+  </div>
+</div>
+<div class="amount-box">
+  <div><div class="lbl">المبلغ المستلم</div><div class="lbl-en">Amount Received</div></div>
+  <div class="amount">{pa4:,.2f} ريال</div>
+</div>
+<div class="info-grid">
+  <div class="ig"><div class="lbl">العميل / Customer</div><div class="val">{sc4}</div></div>
+  <div class="ig"><div class="lbl">رقم الطلبية / Order No.</div><div class="val">{so4}</div></div>
+  <div class="ig"><div class="lbl">طريقة الدفع / Payment Method</div><div class="val">{pt4}</div></div>
+  <div class="ig"><div class="lbl">البنك / رقم الحوالة</div><div class="val">{pb4 or '—'}</div></div>
+  <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
+  <div class="ig"><div class="lbl">رقم السند / Receipt No.</div><div class="val">{receipt_no}</div></div>
+</div>
+<div class="balance-box">
+  <h4>📊 ملخص حساب الطلبية / Order Balance Summary</h4>
+  <div class="b-row"><span>إجمالي قيمة العقد شامل الضريبة</span><span>{contract_val:,.2f} ر</span></div>
+  <div class="b-row"><span>الدفعة المقدمة</span><span>{adv_order:,.2f} ر</span></div>
+  <div class="b-row"><span>إجمالي الدفعات المستلمة (بما فيها هذه الدفعة)</span><span>{total_paid_so_far:,.2f} ر</span></div>
+  <div class="b-row"><span>🔴 الرصيد المتبقي</span><span style="color:#dc2626;">{remaining_after:,.2f} ر</span></div>
+</div>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع المحاسب</div><div class="sig-lbl-en">Accountant Signature</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع العميل</div><div class="sig-lbl-en">Customer Signature</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">ختم الشركة</div><div class="sig-lbl-en">Company Stamp</div></div>
+</div>
+<div class="footer">
+  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+  <span>نظام ERP v7.0 | {today_r}</span>
+</div>
+<script>
+var rcptData = {rcpt_qr_json};
+rcptData.forEach(function(item){{
+  var el=document.getElementById(item.id);
+  if(el) new QRCode(el,{{text:item.qr_text,width:80,height:80,colorDark:"#16a34a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H}});
+}});
+</script>
+</body></html>"""
+                        st.session_state.receipt_html  = receipt_html
+                        st.session_state.receipt_ready = True
+                        st.session_state.rk += 1
+                        st.success(f"✅ تم تسجيل {pa4:,.2f} ريال — سند القبض جاهز للطباعة!")
+
+            if st.session_state.receipt_ready and st.session_state.receipt_html:
+                st.download_button("🖨️ طباعة سند القبض (HTML)",
+                    st.session_state.receipt_html.encode('utf-8'),
+                    f"Receipt_{st.session_state.rk}.html",
+                    "text/html; charset=utf-8", key="dl_receipt")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة أو حفظ PDF")
+                if st.button("🆕 سند قبض جديد", key="new_receipt"):
+                    st.session_state.receipt_ready = False
+                    st.session_state.receipt_html  = None
+                    st.rerun()
 
     # ===== تبويب 4: استعلام فواتير =====
     with tabs[3]:
-        cdf5 = run_query("SELECT id,trade_name FROM customers")
+        cdf5 = run_query("SELECT id,trade_name FROM customers ORDER BY trade_name")
         if not cdf5.empty:
             sc5 = st.selectbox("العميل:", ["الكل"]+cdf5['trade_name'].tolist(), key="iq")
             d1,d2 = st.columns(2)
             ds5 = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="ids")
             de5 = d2.date_input("إلى:", datetime.date.today(), key="ide")
-            if st.button("🔍 بحث"):
+            if st.button("🔍 بحث الفواتير"):
                 if sc5=="الكل":
-                    ir = run_query("SELECT si.invoice_id,si.invoice_date,o.order_id,c.trade_name,si.grand_total,si.net_required FROM sales_invoices si JOIN orders o ON si.order_id=o.order_id JOIN customers c ON o.customer_id=c.id WHERE si.invoice_date BETWEEN :s AND :e ORDER BY si.invoice_date DESC",{"s":ds5,"e":de5})
+                    ir = run_query("""SELECT si.invoice_id,si.invoice_date,o.order_id,c.trade_name,
+                        o.tank_use,o.tank_capacity,o.tank_type,si.subtotal,si.vat,
+                        si.grand_total,si.advance_deducted,si.net_required
+                        FROM sales_invoices si
+                        JOIN orders o ON si.order_id=o.order_id
+                        JOIN customers c ON o.customer_id=c.id
+                        WHERE si.invoice_date BETWEEN :s AND :e
+                        ORDER BY si.invoice_date DESC""",{"s":ds5,"e":de5})
                 else:
                     ci5 = int(cdf5[cdf5['trade_name']==sc5]['id'].iloc[0])
-                    ir = run_query("SELECT si.invoice_id,si.invoice_date,o.order_id,c.trade_name,si.grand_total,si.net_required FROM sales_invoices si JOIN orders o ON si.order_id=o.order_id JOIN customers c ON o.customer_id=c.id WHERE o.customer_id=:cid AND si.invoice_date BETWEEN :s AND :e ORDER BY si.invoice_date DESC",{"cid":ci5,"s":ds5,"e":de5})
-                st.dataframe(ir if not ir.empty else pd.DataFrame({"الحالة":["لا توجد"]}),use_container_width=True)
-                if not ir.empty: st.download_button("⬇️ تنزيل",df_to_csv(ir),"invoices.csv","text/csv")
+                    ir = run_query("""SELECT si.invoice_id,si.invoice_date,o.order_id,c.trade_name,
+                        o.tank_use,o.tank_capacity,o.tank_type,si.subtotal,si.vat,
+                        si.grand_total,si.advance_deducted,si.net_required
+                        FROM sales_invoices si
+                        JOIN orders o ON si.order_id=o.order_id
+                        JOIN customers c ON o.customer_id=c.id
+                        WHERE o.customer_id=:cid AND si.invoice_date BETWEEN :s AND :e
+                        ORDER BY si.invoice_date DESC""",{"cid":ci5,"s":ds5,"e":de5})
+
+                if ir.empty:
+                    st.info("لا توجد فواتير في هذه الفترة.")
+                else:
+                    st.dataframe(ir, use_container_width=True, hide_index=True)
+                    # ملخص إجمالي
+                    tot_grand = float(ir['grand_total'].sum())
+                    tot_net   = float(ir['net_required'].sum())
+                    m1,m2,m3 = st.columns(3)
+                    m1.metric("عدد الفواتير", len(ir))
+                    m2.metric("إجمالي الفواتير", f"{tot_grand:,.2f} ر")
+                    m3.metric("إجمالي الصافي المستحق", f"{tot_net:,.2f} ر")
+
+                    # بناء HTML للطباعة
+                    today_q = datetime.date.today().strftime("%Y/%m/%d")
+                    filter_lbl = sc5 if sc5 != "الكل" else "جميع العملاء"
+                    rows_html = ""
+                    for _,r in ir.iterrows():
+                        tc_q = _sv(r.get('tank_capacity',''))
+                        tu_q = _sv(r.get('tank_use',''))
+                        tt_q = _sv(r.get('tank_type',''))
+                        rows_html += f"""<tr>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r['invoice_id']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r['invoice_date']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['trade_name']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r['order_id']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{tu_q} / {tc_q}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['subtotal']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['vat']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{float(r['grand_total']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{float(r['net_required']):,.2f}</td>
+                        </tr>"""
+
+                    inv_report_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:12px;padding:24px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
+.s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+.s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;color:#1e293b;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
+tbody tr:nth-child(even){{background:#f8fafc;}}
+tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-align:center;}}
+.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:12px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div style="text-align:left;"><div class="badge">تقرير الفواتير</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds5} — {de5}</p><p style="color:#64748b;font-size:11px;">العميل: {filter_lbl}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_q}</p></div>
+</div>
+<div class="summary">
+  <div class="s-card"><div class="lbl">عدد الفواتير</div><div class="val">{len(ir)}</div></div>
+  <div class="s-card"><div class="lbl">إجمالي الفواتير</div><div class="val">{tot_grand:,.2f} ر</div></div>
+  <div class="s-card"><div class="lbl">الصافي المستحق</div><div class="val" style="color:#dc2626;">{tot_net:,.2f} ر</div></div>
+</div>
+<table>
+  <thead><tr>
+    <th>رقم الفاتورة</th><th>التاريخ</th><th>العميل</th><th>الطلبية</th>
+    <th>النوع/السعة</th><th>قبل الضريبة</th><th>ضريبة 15%</th><th>الإجمالي</th><th>الصافي المستحق</th>
+  </tr></thead>
+  <tbody>{rows_html}</tbody>
+  <tfoot><tr>
+    <td colspan="5">الإجماليات</td>
+    <td>{float(ir['subtotal'].sum()):,.2f}</td>
+    <td>{float(ir['vat'].sum()):,.2f}</td>
+    <td>{tot_grand:,.2f}</td>
+    <td>{tot_net:,.2f}</td>
+  </tr></tfoot>
+</table>
+<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_q}</span></div>
+</body></html>"""
+
+                    col_q1, col_q2 = st.columns(2)
+                    col_q1.download_button("⬇️ تنزيل CSV", df_to_csv(ir), "invoices.csv", "text/csv")
+                    col_q2.download_button("🖨️ طباعة التقرير (HTML)",
+                        inv_report_html.encode('utf-8'),
+                        f"invoices_report_{datetime.date.today()}.html",
+                        "text/html; charset=utf-8", key="dl_inv_report")
+                    st.caption("💡 افتح ملف HTML في Chrome أو Safari ثم Ctrl+P للطباعة")
 
 # ==========================================
 # [6] العمال والأجور
