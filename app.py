@@ -81,7 +81,7 @@ def make_qr_b64(text, color=(30, 58, 138), module_size=10, quiet=4, hole_size=4)
                         f_mod_x0 = (c_start + c_f + quiet) * module_size
                         f_mod_y0 = (r_start + r_f + quiet) * module_size
                         f_mod_x1 = f_mod_x0 + module_size - 1
-                        f_mod_y1 = f_mod_x0 + module_size - 1
+                        f_mod_y1 = f_mod_y0 + module_size - 1
                         
                         # Re-implement stylized module logic to avoid double draw
                         draw.rectangle([f_mod_x0, f_mod_y0, f_mod_x1, f_mod_y1], fill=color)
