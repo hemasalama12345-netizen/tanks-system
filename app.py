@@ -226,15 +226,31 @@ elif menu == "📦 الطلبيات":
                     st.rerun()
 
     with tabs[1]:
-        orders_df = run_query("SELECT o.order_id, c.trade_name, o.qty, o.status FROM orders o JOIN customers c ON o.customer_id=c.id ORDER BY o.order_date DESC")
-        if orders_df.empty:
+        orders_df_edit = run_query("""SELECT o.order_id, c.trade_name, o.qty, o.unit_price, o.advance_paid, o.tank_use, o.tank_capacity, o.tank_type, o.status FROM orders o JOIN customers c ON o.customer_id=c.id ORDER BY o.order_date DESC""")
+        if orders_df_edit.empty:
             st.info("لا توجد طلبيات.")
         else:
-            sel = st.selectbox("اختر الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in orders_df.iterrows()])
-            oid = sel.split(" | ")[0]
-            new_status = st.selectbox("الحالة الجديدة:", ["قيد التنفيذ","مكتملة","ملغاة"])
-            if st.button("💾 حفظ التعديل"):
-                if run_write("UPDATE orders SET status=:s WHERE order_id=:oid", {"s":new_status,"oid":oid}):
+            sel_e = st.selectbox("اختر الطلبية للتعديل:", [f"{r['order_id']} | {r['trade_name']}" for _,r in orders_df_edit.iterrows()], key="edit_sel")
+            oid_e = sel_e.split(" | ")[0]
+            re_row = orders_df_edit[orders_df_edit['order_id']==oid_e].iloc[0]
+            e1,e2 = st.columns(2)
+            new_qty = e1.number_input("الكمية:", min_value=1, value=int(re_row['qty']), key="eq")
+            new_up = e2.number_input("سعر الخزان (ريال):", min_value=0.0, value=float(re_row['unit_price']), key="eup")
+            new_total = new_qty * new_up
+            e3,e4 = st.columns(2)
+            new_adv = e3.number_input("المقدم:", min_value=0.0, value=float(re_row['advance_paid']), key="eadv")
+            new_rem = new_total - new_adv
+            e4.metric("المتبقي:", f"{new_rem:,.2f} ر")
+            use_list = ["ماء","صرف","ديزل","حريق"]
+            typ_list = ["دفّان","فوق الأرض"]
+            stat_list = ["قيد التنفيذ","مكتملة","ملغاة"]
+            e5,e6,e7 = st.columns(3)
+            new_use = e5.selectbox("الاستخدام:", use_list, index=use_list.index(re_row['tank_use']) if re_row['tank_use'] in use_list else 0, key="euse")
+            new_cap = e6.text_input("السعة:", value=str(re_row['tank_capacity'] or ""), key="ecap")
+            new_typ = e7.selectbox("نوع التركيب:", typ_list, index=typ_list.index(re_row['tank_type']) if re_row['tank_type'] in typ_list else 0, key="etyp")
+            new_stat = st.selectbox("الحالة:", stat_list, index=stat_list.index(re_row['status']) if re_row['status'] in stat_list else 0, key="estat")
+            if st.button("💾 حفظ التعديلات الكاملة"):
+                if run_write("""UPDATE orders SET qty=:qty,unit_price=:up,total_price=:tp,advance_paid=:ap,remaining_balance=:rb,tank_use=:tu,tank_capacity=:tc,tank_type=:tt,status=:s WHERE order_id=:oid""", {"qty":new_qty,"up":new_up,"tp":new_total,"ap":new_adv,"rb":new_rem,"tu":new_use,"tc":new_cap,"tt":new_typ,"s":new_stat,"oid":oid_e}):
                     st.success("✅ تم تحديث الطلبية!")
                     st.rerun()
 
@@ -293,9 +309,10 @@ elif menu == "📦 الطلبيات":
                 total_paid = float(pay_df['المبلغ المدفوع'].sum()) if not pay_df.empty else 0.0
                 balance = total_inv - total_paid
 
-                st.markdown(f"""<div class="print-card">{print_header()}
+                header_html = print_header()
+                st.markdown(f'''<div class="print-card">{header_html}
                 <h3 style="text-align:center;color:black;">كشف حساب عميل: {sel_c3}</h3>
-                <p style="color:black;">الفترة: {ds} إلى {de}</p></div>""", unsafe_allow_html=True)
+                <p style="color:black;">الفترة: {ds} إلى {de}</p></div>''', unsafe_allow_html=True)
                 st.write("**الفواتير:**")
                 st.dataframe(inv_df if not inv_df.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True)
                 st.write("**المدفوعات:**")
@@ -507,7 +524,8 @@ elif menu == "📥 المشتريات والمخزن":
                             total_paid_fac = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE procurement_id=:pid", {"pid":proc_id})['t'].iloc[0])
                             remaining_fac = float(proc_row['total_price']) * 1.15 - total_paid_fac
                             st.success("✅ تم تسجيل الدفعة! تم تصفير الحقول.")
-                            st.markdown(f"""<div class="print-card">{print_header()}
+                            _ph = print_header()
+                            st.markdown(f"""<div class="print-card">{_ph}
                             <h3 style="text-align:center;color:black;">إيصال دفع لمورد</h3>
                             <p style="color:black;"><b>المورد:</b> {sel_sup} | <b>رقم الفاتورة:</b> #{proc_id}</p>
                             <p style="color:black;"><b>المبلغ المدفوع:</b> {spay_amt:,.2f} ريال | <b>طريقة الدفع:</b> {spay_type}</p>
@@ -541,7 +559,8 @@ elif menu == "📥 المشتريات والمخزن":
                 total_paid = float(pay_hist['المدفوع'].sum()) if not pay_hist.empty else 0.0
                 balance = total_inv - total_paid
 
-                st.markdown(f"""<div class="print-card">{print_header()}
+                _ph = print_header()
+                st.markdown(f"""<div class="print-card">{_ph}
                 <h3 style="text-align:center;color:black;">كشف حساب مورد: {sel_sup3}</h3>
                 <p style="color:black;">الفترة: {ds3} إلى {de3}</p></div>""", unsafe_allow_html=True)
                 st.write("**الفواتير:**")
@@ -599,7 +618,8 @@ elif menu == "💰 الشحن والفواتير":
                         new_del = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_id DESC LIMIT 1", {"oid":oid})
                         del_id = int(new_del['delivery_id'].iloc[0]) if not new_del.empty else "—"
                         qr = f"SUBUL-{random.randint(100000,999999)}"
-                        st.markdown(f"""<div class="print-card">{print_header()}
+                        _ph = print_header()
+                        st.markdown(f"""<div class="print-card">{_ph}
                         <h3 style="text-align:center;color:black;">أمر تسليم رقم: {del_id}</h3>
                         <p style="color:black;"><b>الطلبية:</b> {oid} | <b>العميل:</b> {ord_row['trade_name']} | <b>التاريخ:</b> {datetime.date.today()}</p>
                         <p style="color:black;"><b>السائق:</b> {d_name} | <b>اللوحة:</b> {d_plate} | <b>الإقامة:</b> {d_iqama}</p>
@@ -630,7 +650,8 @@ elif menu == "💰 الشحن والفواتير":
             net = grand - adv_deducted
             inv_num = f"INV-{del_id}-{datetime.date.today().strftime('%Y%m%d')}"
 
-            st.markdown(f"""<div class="print-card">{print_header()}
+            _ph = print_header()
+            st.markdown(f"""<div class="print-card">{_ph}
             <h3 style="text-align:center;color:black;">فاتورة ضريبية رسمية | {inv_num}</h3>
             <p style="color:black;"><b>التاريخ:</b> {datetime.date.today()}</p>
             <p style="color:black;"><b>العميل:</b> {dr['trade_name']} | <b>س.ت:</b> {dr['cr_number']} | <b>الرقم الضريبي:</b> {dr['tax_number']}</p>
