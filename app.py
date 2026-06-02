@@ -433,21 +433,60 @@ elif menu == "📦 الطلبيات":
                 pm = run_query("SELECT COALESCE(SUM(actual_qty),0) as t FROM production_days WHERE order_id=:oid AND status='مغلق'",{"oid":oid_a})
                 dm = run_query("SELECT COALESCE(SUM(shipped_qty),0) as t FROM delivery_orders WHERE order_id=:oid",{"oid":oid_a})
                 pm2 = run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE order_id=:oid",{"oid":oid_a})
+                _pm2_val = float(pm2['t'].iloc[0]) if not pm2.empty else 0.0
+                _adv_val = float(ord_r['advance_paid'])
+                _contract_vat = float(ord_r['total_price']) * 1.15
                 summary_rows.append({
-                    "رقم الطلبية": oid_a, "العميل": ord_r['trade_name'],
+                    "رقم الطلبية": oid_a,
+                    "العميل": ord_r['trade_name'],
                     "الكمية": int(ord_r['qty']),
                     "المصنّع": int(pm['t'].iloc[0]) if not pm.empty else 0,
                     "المسلّم": int(dm['t'].iloc[0]) if not dm.empty else 0,
                     "قيمة العقد": float(ord_r['total_price']),
-                    "المدفوع": float(pm2['t'].iloc[0]) if not pm2.empty else 0,
-                    "المستحق": float(ord_r['total_price'])*1.15 - float(ord_r['advance_paid']) - (float(pm2['t'].iloc[0]) if not pm2.empty else 0.0)
+                    "ضريبة 15%": float(ord_r['total_price']) * 0.15,
+                    "الإجمالي مع الضريبة": _contract_vat,
+                    "الدفعة المقدمة": _adv_val,
+                    "الدفعات اللاحقة": _pm2_val,
+                    "إجمالي المحصّل": _adv_val + _pm2_val,
+                    "المستحق": _contract_vat - _adv_val - _pm2_val
                 })
             if summary_rows:
                 sum_df = pd.DataFrame(summary_rows)
                 st.markdown("---")
-                st.write("### 📋 جدول ملخص كل الطلبيات")
-                st.dataframe(sum_df, use_container_width=True)
-                st.download_button("⬇️ تنزيل ملخص الطلبيات", df_to_csv(sum_df), "active_orders_summary.csv", "text/csv")
+                st.markdown("### 📋 جدول ملخص كل الطلبيات")
+
+                # تنسيق الأرقام
+                display_df = sum_df.copy()
+                for col in ["قيمة العقد","ضريبة 15%","الإجمالي مع الضريبة","الدفعة المقدمة","الدفعات اللاحقة","إجمالي المحصّل","المستحق"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].apply(lambda x: f"{x:,.2f} ر")
+
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "رقم الطلبية": st.column_config.TextColumn(width="medium"),
+                        "العميل": st.column_config.TextColumn(width="medium"),
+                        "المستحق": st.column_config.TextColumn(width="medium"),
+                    }
+                )
+
+                # عرض HTML للطباعة
+                with st.expander("🖨️ معاينة للطباعة"):
+                    html_table = sum_df.to_html(index=False, classes="table", border=1)
+                    st.markdown(f"""
+                    <style>
+                    .table {{ width:100%; border-collapse:collapse; font-size:12px; font-family:'Cairo',sans-serif; direction:rtl; }}
+                    .table th {{ background:#1E3A8A; color:white; padding:6px; text-align:center; }}
+                    .table td {{ padding:5px; text-align:center; border:1px solid #CBD5E1; }}
+                    .table tr:nth-child(even) {{ background:#F8FAFC; }}
+                    </style>
+                    {html_table}
+                    """, unsafe_allow_html=True)
+
+                col_dl1, col_dl2 = st.columns(2)
+                col_dl1.download_button("⬇️ تنزيل Excel/CSV", df_to_csv(sum_df), "active_orders_summary.csv", "text/csv")
 
     # تبويب 4: دفعات عميل
     with tabs[3]:
