@@ -704,8 +704,115 @@ elif menu == "📦 الطلبيات":
         ca_ex = x2.number_input("مصلد (كجم):", min_value=0.0, value=0.0, key=f"cae_{ok}")
         cc_ex = x3.number_input("كالسيوم (كجم):", min_value=0.0, value=0.0, key=f"cce_{ok}")
         s_ex = x1.number_input("سيليكا (كجم):", min_value=0.0, value=0.0, key=f"se_{ok}")
-        if qty_f > 0 and uprice_f > 0:
+        # ========== فحص المخزن مقابل المواد المطلوبة ==========
+        if qty_f > 0 and (r_ex+m_ex+v_ex+t_ex+ca_ex+cc_ex+s_ex) > 0:
             st.info(f"📊 إجمالي المواد ({qty_f} خزان): راتنج {r_ex*qty_f:.0f} | ألياف {m_ex*qty_f:.0f} | روفرز {v_ex*qty_f:.0f} | تيسو {t_ex*qty_f:.0f} | مصلد {ca_ex*qty_f:.0f} | كالسيوم {cc_ex*qty_f:.0f} | سيليكا {s_ex*qty_f:.0f}")
+
+            # احتياج هذه الطلبية
+            this_order_needs = {
+                "راتنج كميائي صنف اول للديزل": r_ex * qty_f,
+                "ألياف (Mat 450)":              m_ex * qty_f,
+                "روفرز (Roving 600)":           v_ex * qty_f,
+                "تيسو (Tissue)":                t_ex * qty_f,
+                "مصلد (Catalyst)":              ca_ex * qty_f,
+                "كربونات الكالسيوم":            cc_ex * qty_f,
+                "سيليكا (Silica)":              s_ex * qty_f,
+            }
+            # جلب رصيد المخزن الحالي
+            inv_now = run_query("SELECT material_name,quantity FROM inventory")
+            inv_dict = {r['material_name']: float(r['quantity']) for _,r in inv_now.iterrows()} if not inv_now.empty else {}
+
+            # احتياج الطلبيات الأخرى الجارية (غير المصنعة بعد)
+            active_ord = run_query("""
+                SELECT o.qty,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp,
+                       COALESCE((SELECT SUM(pd.actual_qty) FROM production_days pd WHERE pd.order_id=o.order_id AND pd.status='مغلق'),0) as made
+                FROM orders o WHERE o.status='قيد التنفيذ'
+            """)
+            reserved = {k:0.0 for k in this_order_needs}
+            if not active_ord.empty:
+                for _,ar in active_ord.iterrows():
+                    remaining_tanks = max(0, int(ar['qty']) - int(ar['made']))
+                    if remaining_tanks > 0:
+                        reserved["راتنج كميائي صنف اول للديزل"] += remaining_tanks * float(ar['resin_exp'] or 0)
+                        reserved["ألياف (Mat 450)"]              += remaining_tanks * float(ar['mat_exp'] or 0)
+                        reserved["روفرز (Roving 600)"]           += remaining_tanks * float(ar['roving_exp'] or 0)
+                        reserved["تيسو (Tissue)"]                += remaining_tanks * float(ar['tissue_exp'] or 0)
+                        reserved["مصلد (Catalyst)"]              += remaining_tanks * float(ar['catalyst_exp'] or 0)
+                        reserved["كربونات الكالسيوم"]            += remaining_tanks * float(ar['calcium_exp'] or 0)
+                        reserved["سيليكا (Silica)"]              += remaining_tanks * float(ar['silica_exp'] or 0)
+
+            # حساب النواقص
+            shortages = {}
+            check_rows = []
+            for mat, needed in this_order_needs.items():
+                if needed <= 0: continue
+                stock    = inv_dict.get(mat, 0.0)
+                res      = reserved.get(mat, 0.0)
+                available = max(0.0, stock - res)
+                shortage  = max(0.0, needed - available)
+                status_icon = "✅" if shortage == 0 else "🔴"
+                check_rows.append({"المادة":mat, "المخزون":f"{stock:,.2f}", "محجوز للطلبيات":f"{res:,.2f}", "متاح":f"{available:,.2f}", "مطلوب":f"{needed:,.2f}", "العجز":f"{shortage:,.2f}", "الحالة":status_icon})
+                if shortage > 0:
+                    shortages[mat] = shortage
+
+            with st.expander("📦 فحص توافر المواد الخام", expanded=bool(shortages)):
+                st.dataframe(pd.DataFrame(check_rows), use_container_width=True, hide_index=True)
+                if shortages:
+                    st.error(f"⚠️ يوجد عجز في {len(shortages)} مادة خام!")
+                    if 'show_po' not in st.session_state: st.session_state.show_po = False
+                    if st.button("🛒 نعم، أريد عمل أمر شراء للمواد الناقصة", key=f"po_btn_{ok}"):
+                        st.session_state.show_po = True
+                    if st.session_state.show_po:
+                        sdf_po = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
+                        if sdf_po.empty:
+                            st.warning("لا يوجد موردون — أضف موردين أولاً من قسم المشتريات.")
+                        else:
+                            po_sup = st.selectbox("اختر المورد:", sdf_po['original_name'].tolist(), key=f"po_sup_{ok}")
+                            po_sup_id = int(sdf_po[sdf_po['original_name']==po_sup]['id'].iloc[0])
+                            st.markdown("**المواد الناقصة المقترح شراؤها:**")
+                            po_rows = []
+                            for mat, qty_short in shortages.items():
+                                po_rows.append({"المادة":mat, "الكمية المقترحة":f"{qty_short:,.3f}", "الوحدة":"كجم/م²"})
+                            st.dataframe(pd.DataFrame(po_rows), use_container_width=True, hide_index=True)
+                            if st.button("✅ تأكيد إصدار أمر الشراء", key=f"po_confirm_{ok}", type="primary"):
+                                today_po = datetime.date.today().strftime("%Y/%m/%d")
+                                po_html_rows = "".join(f'<tr><td style="padding:8px 10px;border:1px solid #e2e8f0;">{m}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{q:,.3f}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">كجم/م²</td></tr>' for m,q in shortages.items())
+                                po_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+.info-box{{background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #d97706;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+  <div style="text-align:left;"><div class="badge">أمر شراء مواد خام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po}</p></div>
+</div>
+<div class="info-box">
+  <p><b>المورد:</b> {po_sup}</p>
+  <p><b>سبب الأمر:</b> عجز مواد خام لطلبية جديدة</p>
+  <p><b>التاريخ:</b> {today_po}</p>
+</div>
+<table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{po_html_rows}</tbody></table>
+<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po}</span></div>
+</body></html>"""
+                                st.session_state[f'po_html_{ok}'] = po_html
+                                st.success(f"✅ تم إصدار أمر الشراء للمورد: {po_sup}")
+                            if st.session_state.get(f'po_html_{ok}'):
+                                st.download_button("🖨️ طباعة أمر الشراء (HTML)",
+                                    st.session_state[f'po_html_{ok}'].encode('utf-8'),
+                                    f"PO_{datetime.date.today()}.html",
+                                    "text/html; charset=utf-8",
+                                    key=f"dl_po_{ok}")
+                                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة")
+                else:
+                    st.success("✅ المخزن يكفي لهذه الطلبية مع الطلبيات الجارية.")
+
         if st.button("🚀 حفظ الطلبية", key=f"save_{ok}"):
             if not cust_sel: st.error("أضف عميلاً أولاً!")
             elif uprice_f==0: st.error("أدخل سعر الخزان!")
@@ -728,7 +835,7 @@ elif menu == "📦 الطلبيات":
             sel_e = st.selectbox("اختر الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in ode.iterrows()], key="esel")
             oid_e = sel_e.split(" | ")[0]
             rr = ode[ode['order_id']==oid_e].iloc[0]
-            st.info(f"📋 بيانات الطلبية الحالية: الكمية={int(rr['qty'])} | السعر={float(rr['unit_price']):,.2f} | المقدم={float(rr['advance_paid']):,.2f}")
+            st.info(f"📋 الطلبية الحالية: الكمية={int(rr['qty'])} | السعر={float(rr['unit_price']):,.2f} | المقدم={float(rr['advance_paid']):,.2f} | الاستخدام={rr['tank_use']} | السعة={rr['tank_capacity'] or '—'} | النوع={rr['tank_type']}")
             e1,e2 = st.columns(2)
             new_qty = e1.number_input("الكمية:", min_value=1, value=int(rr['qty']), key="eq")
             new_up = e2.number_input("سعر الخزان (ريال):", min_value=0.0, value=float(rr['unit_price']), key="eup")
@@ -739,8 +846,9 @@ elif menu == "📦 الطلبيات":
             e4.metric("المتبقي:", f"{new_rem:,.2f} ر")
             ul=["ماء","صرف","ديزل","حريق"]; tl=["دفّان","فوق الأرض"]; sl=["قيد التنفيذ","مكتملة","ملغاة"]
             e5,e6,e7 = st.columns(3)
-            new_use = e5.selectbox("الاستخدام:", ul, index=ul.index(rr['tank_use']) if rr['tank_use'] in ul else 0, key="eu")
-            new_cap = e6.text_input("السعة:", value=str(rr['tank_capacity'] or ""), key="ec")
+            new_use = e5.selectbox("استخدام الخزان:", ul, index=ul.index(rr['tank_use']) if rr['tank_use'] in ul else 0, key="eu")
+            _cur_cap = str(rr['tank_capacity']) if rr['tank_capacity'] and str(rr['tank_capacity']) not in ("None","nan","") else ""
+            new_cap = e6.text_input("سعة الخزان (مثال: 8000 لتر):", value=_cur_cap, key="ec")
             new_typ = e7.selectbox("نوع التركيب:", tl, index=tl.index(rr['tank_type']) if rr['tank_type'] in tl else 0, key="ety")
             new_stat = st.selectbox("الحالة:", sl, index=sl.index(rr['status']) if rr['status'] in sl else 0, key="es")
 
@@ -1434,9 +1542,78 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
             st.download_button("🖨️ طباعة أمر الصرف (HTML)", dispatch_html.encode('utf-8'), f"dispatch_{oid}_{datetime.date.today()}.html", "text/html; charset=utf-8", key="dl_dispatch_pre")
             st.caption("💡 افتح الملف في المتصفح ثم Ctrl+P للطباعة")
 
+            # ========== فحص المخزن قبل بدء الوردية ==========
+            mat_map_full_chk = {
+                "راتنج كميائي صنف اول للديزل": calc["راتنج"],
+                "ألياف (Mat 450)":              calc["ألياف Mat"],
+                "روفرز (Roving 600)":           calc["روفرز"],
+                "تيسو (Tissue)":                calc["تيسو"],
+                "مصلد (Catalyst)":              calc["مصلد"],
+                "كربونات الكالسيوم":            calc["كالسيوم"],
+                "سيليكا (Silica)":              calc["سيليكا"],
+            }
+            inv_chk = run_query("SELECT material_name,quantity FROM inventory")
+            inv_chk_dict = {r['material_name']: float(r['quantity']) for _,r in inv_chk.iterrows()} if not inv_chk.empty else {}
+            prod_shortages = {m:q for m,q in mat_map_full_chk.items() if q > 0 and inv_chk_dict.get(m,0) < q}
+
+            if prod_shortages:
+                st.error("⛔ لا يوجد مواد خام كافية لهذا المنتج!")
+                chk_rows = []
+                for mat, needed in mat_map_full_chk.items():
+                    if needed <= 0: continue
+                    stock = inv_chk_dict.get(mat, 0.0)
+                    short = max(0.0, needed - stock)
+                    chk_rows.append({"المادة":mat, "المخزون":f"{stock:,.3f}", "المطلوب":f"{needed:,.3f}", "العجز":f"{short:,.3f}", "الحالة":"🔴 عجز" if short>0 else "✅"})
+                st.dataframe(pd.DataFrame(chk_rows), use_container_width=True, hide_index=True)
+
+                # HTML تقرير النواقص
+                today_po2 = datetime.date.today().strftime("%Y/%m/%d")
+                short_rows_html = "".join(
+                    f'<tr style="background:{"#fef2f2" if float(r["العجز"].replace(",",""))>0 else "#f0fdf4"};">'
+                    f'<td style="padding:8px 10px;border:1px solid #e2e8f0;">{r["المادة"]}</td>'
+                    f'<td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r["المخزون"]}</td>'
+                    f'<td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r["المطلوب"]}</td>'
+                    f'<td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{r["العجز"]}</td>'
+                    f'<td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r["الحالة"]}</td></tr>'
+                    for r in chk_rows)
+                shortage_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #dc2626;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#dc2626;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#dc2626;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+.warn-box{{background:#fef2f2;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #dc2626;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
+thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+  <div style="text-align:left;"><div class="badge">تقرير عجز المواد الخام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po2}</p><p style="color:#64748b;font-size:11px;">الطلبية: {oid} | {tanks_today} خزان</p></div>
+</div>
+<div class="warn-box">
+  <p><b>⚠️ تنبيه:</b> المخزن لا يحتوي على كميات كافية لتصنيع {tanks_today} خزان من الطلبية {oid}</p>
+  <p>يرجى توفير المواد الناقصة قبل بدء الوردية.</p>
+</div>
+<table>
+  <thead><tr><th>المادة الخام</th><th>المخزون الحالي</th><th>المطلوب للوردية</th><th>العجز</th><th>الحالة</th></tr></thead>
+  <tbody>{short_rows_html}</tbody>
+</table>
+<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po2}</span></div>
+</body></html>"""
+                st.download_button("🖨️ طباعة تقرير العجز (HTML)", shortage_html.encode('utf-8'),
+                    f"shortage_{oid}_{datetime.date.today()}.html", "text/html; charset=utf-8",
+                    key="dl_shortage")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة")
+            else:
+                st.success("✅ المخزن كافٍ — يمكن بدء الوردية")
+
             if st.button("🎬 بدء الوردية وصرف المواد من المخزن", type="primary"):
                 if not supervisor_inp:
                     st.error("أدخل اسم المشرف!")
+                elif prod_shortages:
+                    st.error("⛔ لا يمكن بدء الوردية — يوجد عجز في المواد الخام. أضف المواد أولاً.")
                 else:
                     mat_map_full = {
                         "راتنج كميائي صنف اول للديزل": calc["راتنج"],
@@ -1746,8 +1923,14 @@ elif menu == "💰 الشحن والفواتير":
     tabs = st.tabs(["🚚 أمر تسليم","📄 فاتورة ضريبية","🏦 سند قبض","🔍 استعلام فواتير"])
 
     # ---- دوال HTML للشحن ----
+    def _sv(v):
+        """قيمة آمنة — تُرجع النص أو شرطة لو فارغة/None"""
+        if v is None: return "—"
+        s = str(v).strip()
+        return s if s and s not in ("None","nan","NaN","") else "—"
+
     def make_delivery_html(did, oid, customer_name, tank_use, tank_capacity, tank_type, qty, serials_list, driver_name, car_plate, driver_iqama, today_str):
-        tank_desc = f"خزان {tank_use} سعة {tank_capacity} - {tank_type}"
+        tank_desc = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
         sn_rows = "".join(f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{i+1}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-family:monospace;">{sn}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td></tr>' for i,sn in enumerate(serials_list))
         return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
 <style>
@@ -1798,7 +1981,7 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
 </body></html>"""
 
     def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number, tank_use, tank_capacity, tank_type, qty, unit_price, serials_list, sub, vat, grand, adv_d, net, today_str):
-        tank_desc = f"خزان {tank_use} سعة {tank_capacity} - {tank_type}"
+        tank_desc = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
         sn_list_html = ", ".join(serials_list) if serials_list else "—"
         return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
 <style>
@@ -1855,47 +2038,195 @@ tr:nth-child(even){{background:#f8fafc;}}
 </body></html>"""
 
     def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type, order_id, customer_name, today_str):
-        labels = ""
-        tank_desc_ar = f"خزان {tank_use} سعة {tank_capacity} — {tank_type}"
-        tank_desc_en = f"Tank {tank_use} Cap. {tank_capacity} — {tank_type}"
-        for sn in serials_list:
-            qr_data = f"SN:{sn}|ORDER:{order_id}|TYPE:{tank_use}|CAP:{tank_capacity}|INSTALL:{tank_type}|MFG:{FACTORY_NAME}|DATE:{today_str}"
-            labels += f"""
+        tank_desc_ar = f"خزان {_sv(tank_use)} — سعة {_sv(tank_capacity)} — {_sv(tank_type)}"
+        tank_desc_en = f"Tank {_sv(tank_use)} | Cap. {_sv(tank_capacity)} | {_sv(tank_type)}"
+
+        # بناء بيانات كل بطاقة كـ JSON لاستخدامها في JS
+        import json
+        labels_data = []
+        for i, sn in enumerate(serials_list):
+            qr_text = f"SN:{sn}|ORDER:{order_id}|TYPE:{tank_use}|CAP:{tank_capacity}|INSTALL:{tank_type}|MFG:{FACTORY_NAME}|DATE:{today_str}"
+            labels_data.append({
+                "id": f"qr_{i}",
+                "sn": sn,
+                "qr_text": qr_text,
+                "index": i + 1
+            })
+
+        labels_json = json.dumps(labels_data, ensure_ascii=False)
+
+        # HTML البطاقات — div فارغ لكل QR يملأه JS
+        label_divs = ""
+        for item in labels_data:
+            label_divs += f"""
             <div class="label">
-              <div class="label-header"><span>{FACTORY_NAME}</span><span style="font-size:10px;opacity:.8;">مصنع خزانات فايبر جلاس</span></div>
-              <div class="qr-area">
-                <div class="qr-placeholder">QR<br><span style="font-size:8px;">{sn[-12:]}</span></div>
+              <div class="label-header">
+                <span>🏭 {FACTORY_NAME}</span>
+                <span style="font-size:10px;opacity:.85;">Fibreglass Tank Manufacturer</span>
+              </div>
+              <div class="label-body">
+                <div class="qr-wrap">
+                  <div id="{item['id']}" class="qr-canvas"></div>
+                  <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
+                </div>
                 <div class="qr-info">
-                  <div class="qr-sn">{sn}</div>
-                  <div class="qr-detail-ar">{tank_desc_ar}</div>
-                  <div class="qr-detail-en">{tank_desc_en}</div>
-                  <div class="qr-detail-ar">طلبية: {order_id}</div>
-                  <div class="qr-detail-ar">تاريخ الإنتاج: {today_str}</div>
+                  <div class="info-row sn-row">{item['sn']}</div>
+                  <div class="info-row"><span class="lbl-ar">النوع:</span> {tank_desc_ar}</div>
+                  <div class="info-row ltr"><span class="lbl-en">Type:</span> {tank_desc_en}</div>
+                  <div class="info-row"><span class="lbl-ar">الطلبية:</span> {order_id}</div>
+                  <div class="info-row"><span class="lbl-ar">العميل:</span> {customer_name}</div>
+                  <div class="info-row"><span class="lbl-ar">تاريخ الإنتاج:</span> {today_str}</div>
+                  <div class="info-row ltr"><span class="lbl-en">Prod. Date:</span> {today_str}</div>
+                  <div class="info-row"><span class="lbl-ar">خزان رقم:</span> {item['index']} من {len(serials_list)}</div>
                 </div>
               </div>
-              <div class="label-footer"><span>Fibreglass Tank | {FACTORY_NAME}</span><span>{today_str}</span></div>
+              <div class="label-footer">
+                <span>{FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+                <span>{today_str}</span>
+              </div>
             </div>"""
-        return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+
+        return f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بطاقات QR — {today_str}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:20px;}}
-.page-title{{text-align:center;font-size:16px;font-weight:700;color:#1E3A8A;margin-bottom:18px;}}
-.labels-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}}
-.label{{background:#fff;border:2px solid #1E3A8A;border-radius:12px;padding:14px;page-break-inside:avoid;}}
-.label-header{{background:#1E3A8A;color:#fff;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px;font-weight:700;}}
-.qr-area{{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;}}
-.qr-placeholder{{width:80px;height:80px;background:#f1f5f9;border:2px dashed #94a3b8;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#1E3A8A;flex-shrink:0;text-align:center;}}
+body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:24px;color:#1e293b;}}
+h1.page-title{{
+  text-align:center;font-size:17px;font-weight:800;color:#1E3A8A;
+  margin-bottom:6px;
+}}
+.page-subtitle{{text-align:center;font-size:11px;color:#64748b;margin-bottom:20px;}}
+.labels-grid{{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:18px;
+  max-width:900px;
+  margin:0 auto;
+}}
+.label{{
+  background:#fff;
+  border:2.5px solid #1E3A8A;
+  border-radius:14px;
+  overflow:hidden;
+  page-break-inside:avoid;
+  box-shadow:0 2px 8px rgba(30,58,138,.08);
+}}
+.label-header{{
+  background:linear-gradient(135deg,#1E3A8A,#2563eb);
+  color:#fff;
+  padding:10px 14px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:12px;
+  font-weight:700;
+}}
+.label-body{{
+  display:flex;
+  gap:14px;
+  padding:14px;
+  align-items:flex-start;
+}}
+.qr-wrap{{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  flex-shrink:0;
+}}
+.qr-canvas{{
+  width:100px!important;
+  height:100px!important;
+  border:3px solid #1E3A8A;
+  border-radius:8px;
+  overflow:hidden;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}}
+.qr-canvas canvas,
+.qr-canvas img{{
+  width:100px!important;
+  height:100px!important;
+  display:block;
+}}
+.qr-caption{{
+  font-size:9px;
+  color:#94a3b8;
+  text-align:center;
+  margin-top:5px;
+  line-height:1.4;
+}}
 .qr-info{{flex:1;}}
-.qr-sn{{font-family:monospace;font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:6px;margin-bottom:6px;word-break:break-all;color:#1E3A8A;font-weight:700;}}
-.qr-detail-ar{{font-size:11px;color:#475569;margin:2px 0;}}
-.qr-detail-en{{font-size:10px;color:#94a3b8;margin:2px 0;direction:ltr;text-align:left;}}
-.label-footer{{border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{background:#fff;padding:10px;}}.labels-grid{{grid-template-columns:repeat(2,1fr);gap:10px;}}.label{{page-break-inside:avoid;}}}}
-</style></head><body>
-<div class="page-title">🏷️ بطاقات التعريف والأرقام التسلسلية — {today_str}</div>
-<div class="labels-grid">{labels}</div>
-</body></html>"""
+.info-row{{
+  font-size:11px;
+  color:#475569;
+  margin-bottom:4px;
+  line-height:1.5;
+}}
+.info-row.ltr{{direction:ltr;text-align:left;color:#64748b;}}
+.sn-row{{
+  font-family:monospace;
+  font-size:10.5px;
+  font-weight:700;
+  color:#1E3A8A;
+  background:#eff6ff;
+  padding:4px 7px;
+  border-radius:5px;
+  margin-bottom:6px;
+  word-break:break-all;
+  border:1px solid #bfdbfe;
+}}
+.lbl-ar{{font-weight:700;color:#1e293b;}}
+.lbl-en{{font-weight:600;color:#475569;}}
+.label-footer{{
+  border-top:1px solid #e2e8f0;
+  padding:6px 14px;
+  display:flex;
+  justify-content:space-between;
+  font-size:9px;
+  color:#94a3b8;
+  background:#f8fafc;
+}}
+@media print{{
+  body{{background:#fff;padding:10px;}}
+  .labels-grid{{grid-template-columns:repeat(2,1fr);gap:12px;}}
+  .label{{page-break-inside:avoid;box-shadow:none;}}
+  h1.page-title,.page-subtitle{{display:block;}}
+}}
+</style>
+</head>
+<body>
+<h1 class="page-title">🏷️ بطاقات التعريف والأرقام التسلسلية</h1>
+<div class="page-subtitle">طلبية: {order_id} | العميل: {customer_name} | تاريخ: {today_str} | عدد الخزانات: {len(serials_list)}</div>
+<div class="labels-grid">
+{label_divs}
+</div>
+<script>
+// توليد QR Code لكل بطاقة
+var labelsData = {labels_json};
+labelsData.forEach(function(item) {{
+  var el = document.getElementById(item.id);
+  if (el) {{
+    new QRCode(el, {{
+      text: item.qr_text,
+      width: 100,
+      height: 100,
+      colorDark: "#1E3A8A",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.H
+    }});
+  }}
+}});
+</script>
+</body>
+</html>"""
 
     # ===== تبويب 1: أمر تسليم =====
     with tabs[0]:
@@ -1936,56 +2267,75 @@ body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:20px;}}
                         st.error(f"⛔ لا يوجد كمية مصنعة كافية للشحن. الكمية الجاهزة للشحن الآن هي {available_to_ship} خزان.")
                     else:
                         ok_do = run_write("INSERT INTO delivery_orders(order_id,shipped_qty,driver_name,car_plate,driver_iqama) VALUES(:oid,:sq,:dn,:dp,:di)",
-                                          {"oid":oid_d,"sq":shipped,"dn":dn,"dp":dp,"di":di})
+                                          {"oid":oid_d,"sq":int(shipped),"dn":dn,"dp":dp,"di":di})
                         if ok_do:
                             nd = run_query("SELECT delivery_id FROM delivery_orders WHERE order_id=:oid ORDER BY delivery_id DESC LIMIT 1",{"oid":oid_d})
                             did_new = int(nd['delivery_id'].iloc[0]) if not nd.empty else 1
 
-                            # جلب الأرقام التسلسلية للخزانات المناسبة
+                            # جلب الأرقام التسلسلية — بدون delivery_id (العمود غير موجود في DB)
+                            # نحسب كم خزان تم تسليمه قبل هذا الأمر لنأخذ الخزانات التالية
+                            prev_shipped = tanks_shipped_so_far  # قبل هذا الأمر
                             all_sn = run_query("""SELECT serial_number FROM production_tanks
-                                WHERE order_id=:oid AND (delivery_id IS NULL OR delivery_id=0)
-                                ORDER BY prod_date,id LIMIT :lim""",{"oid":oid_d,"lim":shipped})
-                            serials_shipped = all_sn['serial_number'].tolist() if not all_sn.empty else [f"SUBUL-SN-{i}" for i in range(1,shipped+1)]
-
-                            # ربط الأرقام التسلسلية بأمر التسليم
-                            for sn in serials_shipped:
-                                run_write("UPDATE production_tanks SET delivery_id=:did WHERE serial_number=:sn",{"did":did_new,"sn":sn})
+                                WHERE order_id=:oid
+                                ORDER BY id
+                                LIMIT :lim OFFSET :off""",
+                                {"oid":oid_d,"lim":int(shipped),"off":prev_shipped})
+                            serials_shipped = all_sn['serial_number'].tolist() if not all_sn.empty else [f"SUBUL-SN-{did_new}-{i}" for i in range(1,shipped+1)]
 
                             # إنشاء الفاتورة تلقائياً
-                            sub_auto = float(shipped) * float(or_d['unit_price'])
-                            adv_auto = (float(or_d['advance_paid'])/float(or_d['qty']))*float(shipped) if float(or_d['qty'])>0 else 0
-                            vat_auto = sub_auto * 0.15
+                            sub_auto   = float(shipped) * float(or_d['unit_price'])
+                            adv_auto   = (float(or_d['advance_paid'])/float(or_d['qty']))*float(shipped) if float(or_d['qty'])>0 else 0
+                            vat_auto   = sub_auto * 0.15
                             grand_auto = sub_auto + vat_auto
-                            net_auto = grand_auto - adv_auto
+                            net_auto   = grand_auto - adv_auto
                             inv_n_auto = f"INV-{did_new}-{datetime.date.today().strftime('%Y%m%d')}"
-                            run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
-                                      {"did":did_new,"oid":oid_d,"st":sub_auto,"v":vat_auto,"gt":grand_auto,"ad":adv_auto,"nr":net_auto})
+                            # تحقق من عدم التكرار قبل الإدراج
+                            inv_exists = run_query("SELECT invoice_id FROM sales_invoices WHERE delivery_id=:did",{"did":did_new})
+                            if inv_exists.empty:
+                                run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
+                                          {"did":did_new,"oid":oid_d,"st":sub_auto,"v":vat_auto,"gt":grand_auto,"ad":adv_auto,"nr":net_auto})
 
-                            st.success(f"✅ تم إصدار أمر التسليم #{did_new} وإنشاء الفاتورة {inv_n_auto} تلقائياً!")
-
-                            # HTML أمر التسليم
-                            do_html = make_delivery_html(did_new, oid_d, or_d['trade_name'],
+                            # توليد HTML وحفظه في session_state حتى لا يختفي
+                            do_html  = make_delivery_html(did_new, oid_d, or_d['trade_name'],
                                 str(or_d['tank_use']), str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
                                 shipped, serials_shipped, dn, dp, di, today_str_d)
-
-                            # HTML الفاتورة
                             inv_html = make_invoice_html(inv_n_auto, did_new, oid_d, or_d['trade_name'],
                                 str(or_d['cr_number'] or '—'), str(or_d['tax_number'] or '—'),
                                 str(or_d['tank_use']), str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
                                 shipped, float(or_d['unit_price']), serials_shipped,
                                 sub_auto, vat_auto, grand_auto, adv_auto, net_auto, today_str_d)
-
-                            # HTML بطاقات QR
-                            qr_html = make_qr_labels_html(serials_shipped, str(or_d['tank_use']),
+                            qr_html  = make_qr_labels_html(serials_shipped, str(or_d['tank_use']),
                                 str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
                                 oid_d, or_d['trade_name'], today_str_d)
 
-                            col1,col2,col3 = st.columns(3)
-                            col1.download_button("🖨️ أمر التسليم (HTML)", do_html.encode('utf-8'), f"DO_{did_new}.html", "text/html; charset=utf-8", key=f"dl_do_{pck_d}")
-                            col2.download_button("🧾 الفاتورة (HTML)", inv_html.encode('utf-8'), f"INV_{inv_n_auto}.html", "text/html; charset=utf-8", key=f"dl_inv_auto_{pck_d}")
-                            col3.download_button("🏷️ بطاقات QR (HTML)", qr_html.encode('utf-8'), f"QR_labels_{did_new}.html", "text/html; charset=utf-8", key=f"dl_qr_{pck_d}")
-                            st.caption("💡 افتح كل ملف في Chrome أو Safari ثم Ctrl+P للطباعة أو حفظ PDF")
-                            st.session_state.dok += 1
+                            # حفظ في session_state لعدم الاختفاء
+                            st.session_state['last_do_html']     = do_html
+                            st.session_state['last_inv_html']    = inv_html
+                            st.session_state['last_qr_html']     = qr_html
+                            st.session_state['last_did']         = did_new
+                            st.session_state['last_inv_n']       = inv_n_auto
+                            st.session_state['last_do_ready']    = True
+
+                # عرض أزرار التنزيل دائماً طالما في session_state — لا تختفي
+                if st.session_state.get('last_do_ready'):
+                    did_show  = st.session_state['last_did']
+                    inv_show  = st.session_state['last_inv_n']
+                    st.success(f"✅ تم إصدار أمر التسليم #{did_show} والفاتورة {inv_show} — نزّل الملفات قبل المتابعة")
+                    col1,col2,col3 = st.columns(3)
+                    col1.download_button("🖨️ أمر التسليم (HTML)",
+                        st.session_state['last_do_html'].encode('utf-8'),
+                        f"DO_{did_show}.html", "text/html; charset=utf-8", key="dl_do_persist")
+                    col2.download_button("🧾 الفاتورة (HTML)",
+                        st.session_state['last_inv_html'].encode('utf-8'),
+                        f"INV_{inv_show}.html", "text/html; charset=utf-8", key="dl_inv_persist")
+                    col3.download_button("🏷️ بطاقات QR (HTML)",
+                        st.session_state['last_qr_html'].encode('utf-8'),
+                        f"QR_{did_show}.html", "text/html; charset=utf-8", key="dl_qr_persist")
+                    st.caption("💡 افتح كل ملف في Chrome أو Safari ثم Ctrl+P للطباعة أو حفظ PDF")
+                    if st.button("🆕 أمر تسليم جديد", key="clear_do"):
+                        st.session_state['last_do_ready'] = False
+                        st.session_state.dok += 1
+                        st.rerun()
 
     # ===== تبويب 2: فاتورة ضريبية =====
     with tabs[1]:
@@ -2006,7 +2356,14 @@ body{{font-family:'Cairo',sans-serif;background:#f1f5f9;padding:20px;}}
             inv_n= f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
             today_str_inv = datetime.date.today().strftime("%Y/%m/%d")
 
-            serials_inv = run_query("SELECT serial_number FROM production_tanks WHERE delivery_id=:did ORDER BY id",{"did":did2})
+            serials_inv = run_query("""SELECT pt.serial_number FROM production_tanks pt
+                JOIN production_days pd ON pt.shift_id=pd.id
+                WHERE pt.order_id=:oid
+                ORDER BY pt.id
+                LIMIT :lim OFFSET :off""",
+                {"oid": str(dr['order_id']),
+                 "lim": int(dr['shipped_qty']),
+                 "off": max(0, int(run_query("SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",{"oid":str(dr['order_id']),"did":did2})['t'].iloc[0]))})
             sn_list_inv = serials_inv['serial_number'].tolist() if not serials_inv.empty else []
 
             st.markdown(f"#### 🧾 فاتورة: {inv_n}")
