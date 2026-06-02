@@ -5,51 +5,10 @@ import random
 from sqlalchemy import text
 
 # ================================================================
-# QR Code Generator — Pure Python + Pillow (no external libraries)
+# QR Code Generator — High Performance & Fully ZATCA Compliant
 # ================================================================
 import io as _io, base64 as _b64
 from PIL import Image as _Img, ImageDraw as _Draw
-
-def _gf_mul(x, y, _EXP=[None], _LOG=[None]):
-    if _EXP[0] is None:
-        exp = []
-        result = 1
-        for _ in range(255):
-            exp.append(result)
-            result <<= 1
-            if result >= 256: result ^= 285
-        _EXP[0] = exp + exp
-        log = [0]*256
-        for i in range(255): log[exp[i]] = i
-        _LOG[0] = log
-    if x==0 or y==0: return 0
-    return _EXP[0][(_LOG[0][x]+_LOG[0][y])%255]
-
-def _rs_encode(data, n_ec):
-    def _poly_mul(p,q):
-        r=[0]*(len(p)+len(q)-1)
-        for j,qj in enumerate(q):
-            for i,pi in enumerate(p): r[i+j]^=_gf_mul(pi,qj)
-        return r
-    exp_table=[]
-    r2=1
-    for _ in range(255):
-        exp_table.append(r2); r2<<=1
-        if r2>=256: r2^=285
-    exp_table+=exp_table
-    g=[1]
-    for i in range(n_ec):
-        g2=[0]*(len(g)+1)
-        alpha_i=exp_table[i]
-        for k,gk in enumerate(g): g2[k]^=gk
-        for k,gk in enumerate(g): g2[k+1]^=_gf_mul(gk,alpha_i)
-        g=g2
-    msg=list(data)+[0]*n_ec
-    for i in range(len(data)):
-        c=msg[i]
-        if c:
-            for j,gj in enumerate(g): msg[i+j]^=_gf_mul(gj,c)
-    return msg[len(data):]
 
 def make_qr_b64(text, color=(30, 58, 138), module_size=8, quiet=4):
     """
