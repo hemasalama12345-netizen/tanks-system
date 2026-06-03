@@ -196,6 +196,24 @@ try:
 except Exception:
     pass  # تجاهل لو الجدول غير موجود بعد
 
+def generate_invoice_number(delivery_id):
+    """
+    يولّد رقم فاتورة فريد لا يتكرر أبداً.
+    يستخدم invoice_id التسلسلي من قاعدة البيانات.
+    الشكل: INV-YYYY-NNNNNN
+    """
+    # تحقق أولاً: هل يوجد فاتورة محفوظة لهذا الأمر؟
+    saved = run_query(
+        "SELECT invoice_id FROM sales_invoices WHERE delivery_id=:did ORDER BY invoice_id LIMIT 1",
+        {"did": delivery_id})
+    if not saved.empty:
+        iid = int(saved['invoice_id'].iloc[0])
+        return f"INV-{datetime.date.today().year}-{iid:06d}"
+    # الفاتورة جديدة — احسب الرقم التالي
+    max_id = run_query("SELECT COALESCE(MAX(invoice_id),0) as m FROM sales_invoices")
+    next_id = int(max_id['m'].iloc[0]) + 1 if not max_id.empty else 1
+    return f"INV-{datetime.date.today().year}-{next_id:06d}"
+
 st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v7.0", layout="wide")
 st.markdown("""
 <style>
@@ -3297,7 +3315,7 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                             vat_auto   = sub_auto * 0.15
                             grand_auto = sub_auto + vat_auto
                             net_auto   = grand_auto - adv_auto
-                            inv_n_auto = f"INV-{did_new}-{datetime.date.today().strftime('%Y%m%d')}"
+                            inv_n_auto = generate_invoice_number(did_new)
                             # تحقق من عدم التكرار قبل الإدراج
                             inv_exists = run_query("SELECT invoice_id FROM sales_invoices WHERE delivery_id=:did",{"did":did_new})
                             if inv_exists.empty:
@@ -3380,11 +3398,12 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                 "SELECT invoice_id,invoice_date FROM sales_invoices WHERE delivery_id=:did",
                 {"did":did2})
             if not saved_inv.empty:
-                inv_n = f"INV-{did2}-{str(saved_inv['invoice_date'].iloc[0]).replace('-','')[:8]}"
+                iid_saved = int(saved_inv['invoice_id'].iloc[0])
+                inv_n = f"INV-{datetime.date.today().year}-{iid_saved:06d}"
                 st.success(f"✅ الفاتورة محفوظة — رقم: {inv_n}")
             else:
-                inv_n = f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
-                st.info(f"📋 فاتورة جديدة — ستُحفظ عند الضغط على حفظ")
+                inv_n = generate_invoice_number(did2)
+                st.info(f"📋 فاتورة جديدة — رقم: {inv_n} — ستُحفظ عند الضغط على حفظ")
 
             # جلب الأرقام التسلسلية لهذا الأمر تحديداً
             _prev_off_inv = int(run_query(
