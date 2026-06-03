@@ -1919,19 +1919,8 @@ elif menu == "🏭 التصنيع":
         "ريزن عادي"
     ]
     def _get_resin_type(oid):
-        """يجلب نوع الراتنج المحدد لهذه الطلبية"""
-        # أولاً: تحقق من session_state
-        if st.session_state.get(f'resin_type_{oid}'):
-            return st.session_state[f'resin_type_{oid}']
-        # ثانياً: حاول جلبه من عمود resin_type في DB (إذا وُجد)
-        try:
-            rt = run_query("SELECT resin_type FROM orders WHERE order_id=:oid", {"oid":oid})
-            if not rt.empty and rt['resin_type'].iloc[0]:
-                return str(rt['resin_type'].iloc[0])
-        except Exception:
-            pass
-        # افتراضي: الأول في القائمة
-        return _RESIN_OPTIONS[0]
+        """يجلب نوع الراتنج من session_state فقط — العمود غير موجود في DB"""
+        return st.session_state.get(f'resin_type_{oid}', _RESIN_OPTIONS[0])
 
     def _build_mat_map(resin_type):
         return {
