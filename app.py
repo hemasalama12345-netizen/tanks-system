@@ -2158,80 +2158,80 @@ elif menu == "📥 المشتريات والمخزن":
                             ok = run_write(
                                 "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",
                                 {"sid":int(sid2),"pid":int(pid),"a":float(round(sa,2)),"pt":str(spt),"b":str(sb or ""),"n":str(sn2 or "")})
-                        if ok:
-                            new_paid = inv_paid_so_far + sa
-                            new_due  = inv_grand - new_paid
-                            today_r  = datetime.date.today().strftime("%Y/%m/%d")
-                            rcpt_no  = f"SPR-{pid}-{datetime.date.today().strftime('%Y%m%d')}"
-                            _qr_sp_b64 = make_qr_b64(
-                                f"RECEIPT:{rcpt_no}|SUP:{ss}|INV:#{pid}|AMT:{sa:.2f}|DATE:{today_r}",
-                                color=(30,58,138), module_size=6)
-                            due_color = "#16a34a" if new_due <= 0.5 else "#dc2626"
-                            due_label = f"{max(0,new_due):,.2f} ريال" + (" ✅ مسدد" if new_due<=0.5 else "")
-
-                            sp_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:28px;max-width:750px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;margin-bottom:3px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-.badge-en{{background:#eff6ff;color:#1E3A8A;padding:3px 12px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
-.qr-img{{width:70px;height:70px;border:2px solid #1E3A8A;border-radius:6px;}}
-.amt-box{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}}
-.amt-box .lbl{{font-size:13px;opacity:.85;}} .amt-box .lbl-en{{font-size:10px;opacity:.6;direction:ltr;}}
-.amt-box .val{{font-size:26px;font-weight:800;}}
-.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
-.ig{{background:#f8fafc;border-radius:8px;padding:10px;border-right:3px solid #1E3A8A;}}
-.ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:3px;}} .ig .val{{font-size:12px;font-weight:700;}}
-.bal{{background:#f1f5f9;border-radius:10px;padding:12px 16px;margin-bottom:14px;}}
-.bal h4{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}}
-.brow{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;}}
-.brow.total{{font-weight:700;font-size:13px;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:6px;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:14px;}}
-.sig-box{{text-align:center;flex:1;}}
-.sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
-.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:10px;color:#64748b;}}
-.footer{{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p><p style="margin-top:5px;">رقم الإيصال: <b>{rcpt_no}</b> | {today_r}</p></div>
-  <div class="hdr-right"><div class="badge">إيصال دفعة مورد</div><div class="badge-en">Supplier Payment Receipt</div><img class="qr-img" src="data:image/png;base64,{_qr_sp_b64}" alt="QR"></div>
-</div>
-<div class="amt-box">
-  <div><div class="lbl">المبلغ المدفوع</div><div class="lbl-en">Amount Paid</div></div>
-  <div class="val">{sa:,.2f} ريال</div>
-</div>
-<div class="grid2">
-  <div class="ig"><div class="lbl">المورد / Supplier</div><div class="val">{ss}</div></div>
-  <div class="ig"><div class="lbl">رقم الفاتورة / Invoice</div><div class="val">#{pid}</div></div>
-  <div class="ig"><div class="lbl">طريقة الدفع / Method</div><div class="val">{spt}</div></div>
-  <div class="ig"><div class="lbl">البنك / Bank</div><div class="val">{sb or "—"}</div></div>
-  <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
-  <div class="ig"><div class="lbl">ملاحظات / Notes</div><div class="val">{sn2 or "—"}</div></div>
-</div>
-<div class="bal">
-  <h4>📊 ملخص حساب الفاتورة</h4>
-  <div class="brow"><span>إجمالي الفاتورة (مع الضريبة)</span><span>{inv_grand:,.2f} ر</span></div>
-  <div class="brow"><span>المدفوع سابقاً</span><span>{inv_paid_so_far:,.2f} ر</span></div>
-  <div class="brow"><span>هذه الدفعة</span><span style="color:#1E3A8A;font-weight:700;">{sa:,.2f} ر</span></div>
-  <div class="brow total"><span>الرصيد المتبقي</span><span style="color:{due_color};">{due_label}</span></div>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المورد</div><div class="sig-en">Supplier</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_r}</span></div>
-</body></html>"""
-                            st.session_state.sp_receipt_html  = sp_html
-                            st.session_state.sp_receipt_ready = True
-                            st.success(f"✅ دفعة {sa:,.2f} ريال | متبقي: {max(0,new_due):,.2f} ريال")
-                            st.session_state.spk += 1
+                            if ok:
+                                new_paid = inv_paid_so_far + sa
+                                new_due  = inv_grand - new_paid
+                                today_r  = datetime.date.today().strftime("%Y/%m/%d")
+                                rcpt_no  = f"SPR-{pid}-{datetime.date.today().strftime('%Y%m%d')}"
+                                _qr_sp_b64 = make_qr_b64(
+                                    f"RECEIPT:{rcpt_no}|SUP:{ss}|INV:#{pid}|AMT:{sa:.2f}|DATE:{today_r}",
+                                    color=(30,58,138), module_size=6)
+                                due_color = "#16a34a" if new_due <= 0.5 else "#dc2626"
+                                due_label = f"{max(0,new_due):,.2f} ريال" + (" ✅ مسدد" if new_due<=0.5 else "")
+    
+                                sp_html = f"""<!DOCTYPE html>
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:28px;max-width:750px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;margin-bottom:3px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    .badge-en{{background:#eff6ff;color:#1E3A8A;padding:3px 12px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
+    .qr-img{{width:70px;height:70px;border:2px solid #1E3A8A;border-radius:6px;}}
+    .amt-box{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}}
+    .amt-box .lbl{{font-size:13px;opacity:.85;}} .amt-box .lbl-en{{font-size:10px;opacity:.6;direction:ltr;}}
+    .amt-box .val{{font-size:26px;font-weight:800;}}
+    .grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
+    .ig{{background:#f8fafc;border-radius:8px;padding:10px;border-right:3px solid #1E3A8A;}}
+    .ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:3px;}} .ig .val{{font-size:12px;font-weight:700;}}
+    .bal{{background:#f1f5f9;border-radius:10px;padding:12px 16px;margin-bottom:14px;}}
+    .bal h4{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}}
+    .brow{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;}}
+    .brow.total{{font-weight:700;font-size:13px;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:6px;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:14px;}}
+    .sig-box{{text-align:center;flex:1;}}
+    .sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
+    .sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:10px;color:#64748b;}}
+    .footer{{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;max-width:100%;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p><p style="margin-top:5px;">رقم الإيصال: <b>{rcpt_no}</b> | {today_r}</p></div>
+      <div class="hdr-right"><div class="badge">إيصال دفعة مورد</div><div class="badge-en">Supplier Payment Receipt</div><img class="qr-img" src="data:image/png;base64,{_qr_sp_b64}" alt="QR"></div>
+    </div>
+    <div class="amt-box">
+      <div><div class="lbl">المبلغ المدفوع</div><div class="lbl-en">Amount Paid</div></div>
+      <div class="val">{sa:,.2f} ريال</div>
+    </div>
+    <div class="grid2">
+      <div class="ig"><div class="lbl">المورد / Supplier</div><div class="val">{ss}</div></div>
+      <div class="ig"><div class="lbl">رقم الفاتورة / Invoice</div><div class="val">#{pid}</div></div>
+      <div class="ig"><div class="lbl">طريقة الدفع / Method</div><div class="val">{spt}</div></div>
+      <div class="ig"><div class="lbl">البنك / Bank</div><div class="val">{sb or "—"}</div></div>
+      <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
+      <div class="ig"><div class="lbl">ملاحظات / Notes</div><div class="val">{sn2 or "—"}</div></div>
+    </div>
+    <div class="bal">
+      <h4>📊 ملخص حساب الفاتورة</h4>
+      <div class="brow"><span>إجمالي الفاتورة (مع الضريبة)</span><span>{inv_grand:,.2f} ر</span></div>
+      <div class="brow"><span>المدفوع سابقاً</span><span>{inv_paid_so_far:,.2f} ر</span></div>
+      <div class="brow"><span>هذه الدفعة</span><span style="color:#1E3A8A;font-weight:700;">{sa:,.2f} ر</span></div>
+      <div class="brow total"><span>الرصيد المتبقي</span><span style="color:{due_color};">{due_label}</span></div>
+    </div>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المورد</div><div class="sig-en">Supplier</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_r}</span></div>
+    </body></html>"""
+                                st.session_state.sp_receipt_html  = sp_html
+                                st.session_state.sp_receipt_ready = True
+                                st.success(f"✅ دفعة {sa:,.2f} ريال | متبقي: {max(0,new_due):,.2f} ريال")
+                                st.session_state.spk += 1
 
             if st.session_state.sp_receipt_ready and st.session_state.sp_receipt_html:
                 st.download_button("🖨️ طباعة الإيصال (HTML)",
