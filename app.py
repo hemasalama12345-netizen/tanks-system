@@ -7,101 +7,140 @@ from sqlalchemy import text
 # ================================================================
 # QR Code Generator — Pure Python + Pillow (no external libraries)
 # ================================================================
-# Stylized to mimic square-with-white-center design
-# ================================================================
 import io as _io, base64 as _b64
 from PIL import Image as _Img, ImageDraw as _Draw
 
-def make_qr_b64(text, color=(30, 58, 138), module_size=10, quiet=4, hole_size=4):
-    """توليد QR Code واضح وقابل للقراءة"""
-    try:
-        import qrcode as _qrcode
-        qr = _qrcode.QRCode(
-            version=None,
-            error_correction=_qrcode.constants.ERROR_CORRECT_M,
-            box_size=module_size,
-            border=quiet,
-        )
-        qr.add_data(text)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-        buf = _io.BytesIO()
-        img.save(buf, format='PNG')
-        return _b64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        return ""
+def _gf_mul(x, y, _EXP=[None], _LOG=[None]):
+    if _EXP[0] is None:
+        exp = []
+        result = 1
+        for _ in range(255):
+            exp.append(result)
+            result <<= 1
+            if result >= 256: result ^= 285
+        _EXP[0] = exp + exp
+        log = [0]*256
+        for i in range(255): log[exp[i]] = i
+        _LOG[0] = log
+    if x==0 or y==0: return 0
+    return _EXP[0][(_LOG[0][x]+_LOG[0][y])%255]
 
+def _rs_encode(data, n_ec):
+    def _poly_mul(p,q):
+        r=[0]*(len(p)+len(q)-1)
+        for j,qj in enumerate(q):
+            for i,pi in enumerate(p): r[i+j]^=_gf_mul(pi,qj)
+        return r
+    exp_table=[]
+    r2=1
+    for _ in range(255):
+        exp_table.append(r2); r2<<=1
+        if r2>=256: r2^=285
+    exp_table+=exp_table
+    g=[1]
+    for i in range(n_ec):
+        g2=[0]*(len(g)+1)
+        alpha_i=exp_table[i]
+        for k,gk in enumerate(g): g2[k]^=gk
+        for k,gk in enumerate(g): g2[k+1]^=_gf_mul(gk,alpha_i)
+        g=g2
+    msg=list(data)+[0]*n_ec
+    for i in range(len(data)):
+        c=msg[i]
+        if c:
+            for j,gj in enumerate(g): msg[i+j]^=_gf_mul(gj,c)
+    return msg[len(data):]
 
-def make_standard_fallback_qr_b64(text, color, module_size, quiet):
-    from PIL import Image as _Img, ImageDraw as _Draw
-    raw = text.encode('utf-8', errors='replace')
+def make_qr_b64(text, color=(30,58,138), module_size=8, quiet=4):
+    """توليد QR Code كـ base64 PNG — يعمل بدون إنترنت"""
+    raw = text.encode('latin-1', errors='replace')
     n = len(raw)
-    
-    if n <= 19: ver, ec, dc = 1, 7, 19
-    elif n <= 34: ver, ec, dc = 2, 10, 34
-    elif n <= 55: ver, ec, dc = 3, 15, 55
-    elif n <= 80: ver, ec, dc = 4, 20, 80
-    else: ver, ec, dc = 40, 114, 1663
-    
-    size = 17 + 4 * ver
-    ns = (size + 2 * quiet) * module_size
-    img = _Img.new('RGB', (ns, ns), (255, 255, 255))
-    draw = _Draw.Draw(img)
-    
-    #Finder patterns
-    for r_s, c_s in [(0, 0), (0, size-7), (size-7, 0)]:
-        f_x0 = (c_s + quiet) * module_size
-        f_y0 = (r_s + quiet) * module_size
-        f_x1 = f_x0 + 7 * module_size - 1
-        f_y1 = f_y0 + 7 * module_size - 1
-        # Re-apply stylized module design even to finders in fallback as best effort
-        for r_f in range(7):
-            for c_f in range(7):
-                if (r_f == 0 or r_f == 6 or c_f == 0 or c_f == 6) or (2 <= r_f <= 4 and 2 <= c_f <= 4):
-                    m_x0 = (c_s + c_f + quiet) * module_size
-                    m_y0 = (r_s + r_f + quiet) * module_size
-                    # No holes in fallback to ensure legibility and simplicity
-                    draw.rectangle([m_x0, m_y0, m_x0 + module_size - 1, m_y0 + module_size - 1], fill=color)
-                    
-    #Timing patterns
-    for i in range(8, size-8):
-        # Even timing points
-        x = (i + quiet) * module_size
-        y = (6 + quiet) * module_size
-        draw.rectangle([x, y, x + module_size - 1, y + module_size - 1], fill=color if i%2==0 else (255,255,255))
-        
-        x = (6 + quiet) * module_size
-        y = (i + quiet) * module_size
-        draw.rectangle([x, y, x + module_size - 1, y + module_size - 1], fill=color if i%2==0 else (255,255,255))
-        
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    return base64.b64encode(buf.getvalue()).decode()
-
-def generate_zatca_tlv_b64(seller_name: str, vat_no: str, timestamp: str,
-                            total_amount: float, vat_amount: float) -> str:
-    """
-    توليد بيانات QR وفق معيار ZATCA (TLV مشفرة Base64)
-    Tag 1: اسم البائع
-    Tag 2: الرقم الضريبي
-    Tag 3: تاريخ ووقت الفاتورة
-    Tag 4: إجمالي الفاتورة شامل الضريبة
-    Tag 5: مبلغ الضريبة
-    """
-    import struct
-
-    def tlv_encode(tag: int, value: str) -> bytes:
-        encoded = value.encode('utf-8')
-        return struct.pack('BB', tag, len(encoded)) + encoded
-
-    tlv = (
-        tlv_encode(1, seller_name or "—") +
-        tlv_encode(2, vat_no or "—") +
-        tlv_encode(3, timestamp or "") +
-        tlv_encode(4, f"{total_amount:.2f}") +
-        tlv_encode(5, f"{vat_amount:.2f}")
-    )
-    return _b64.b64encode(tlv).decode('utf-8')
+    # version selection (Byte mode, Error Level L)
+    caps = [(1,19,7,7),(2,34,10,16),(3,55,15,19),(4,80,20,25),(5,108,26,31),
+            (6,136,18,36),(7,156,20,40),(8,194,24,48),(9,232,30,60),(10,274,18,70)]
+    ver,size_,ec,dc = next(((v,17+4*v,e,d) for v,cap,e,d in caps if n<=cap), (10,57,18,70))
+    size = 17+4*ver
+    M=[[None]*size for _ in range(size)]
+    def sf(r,c,v):
+        if 0<=r<size and 0<=c<size: M[r][c]=v
+    def finder(r,c):
+        for i in range(-1,8):
+            for j in range(-1,8):
+                if not(0<=r+i<size and 0<=c+j<size): continue
+                if i in(-1,7) or j in(-1,7): M[r+i][c+j]=0
+                elif i in(0,6) or j in(0,6): M[r+i][c+j]=1
+                elif 2<=i<=4 and 2<=j<=4: M[r+i][c+j]=1
+                else: M[r+i][c+j]=0
+    finder(0,0); finder(0,size-7); finder(size-7,0)
+    for i in range(8,size-8):
+        M[6][i]=i%2==0; M[i][6]=i%2==0
+    for i in range(9):
+        if M[8][i] is None: M[8][i]=0
+        if M[i][8] is None: M[i][8]=0
+    for i in range(size-8,size):
+        if M[8][i] is None: M[8][i]=0
+        if M[i][8] is None: M[i][8]=0
+    M[size-8][8]=1
+    # alignment
+    alc={2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]}
+    for ar in alc.get(ver,[]):
+        for ac in alc.get(ver,[]):
+            if M[ar][ac] is not None: continue
+            for dr in range(-2,3):
+                for dc2 in range(-2,3):
+                    rr,cc=ar+dr,ac+dc2
+                    if 0<=rr<size and 0<=cc<size:
+                        if abs(dr)==2 or abs(dc2)==2: M[rr][cc]=1
+                        elif dr==0 and dc2==0: M[rr][cc]=1
+                        else: M[rr][cc]=0
+    # encode
+    dn=min(n,dc)
+    bits=[0,1,0,0]
+    for i in range(7,-1,-1): bits.append((dn>>i)&1)
+    for byte in raw[:dc]:
+        for i in range(7,-1,-1): bits.append((byte>>i)&1)
+    bits+=[0,0,0,0]
+    while len(bits)%8: bits.append(0)
+    pad=[0xEC,0x11]; pi=0; total=dc*8
+    while len(bits)<total:
+        for b in range(7,-1,-1): bits.append((pad[pi%2]>>b)&1)
+        pi+=1
+    dc_b=[]
+    for i in range(0,total,8):
+        v=0
+        for b in bits[i:i+8]: v=(v<<1)|b
+        dc_b.append(v)
+    ec_b=_rs_encode(bytes(dc_b),ec)
+    all_bytes=dc_b+list(ec_b)
+    all_bits=[]
+    for byte in all_bytes:
+        for i in range(7,-1,-1): all_bits.append((byte>>i)&1)
+    bi=0; col=size-1; up=True
+    while col>=0:
+        if col==6: col-=1
+        rows=range(size-1,-1,-1) if up else range(size)
+        for row in rows:
+            for co in [0,-1]:
+                c=col+co
+                if 0<=c<size and M[row][c] is None:
+                    b=all_bits[bi] if bi<len(all_bits) else 0
+                    M[row][c]=b^(1 if (row+c)%2==0 else 0)
+                    bi+=1
+        col-=2; up=not up
+    for r in range(size):
+        for c in range(size):
+            if M[r][c] is None: M[r][c]=0
+    # render
+    ns=(size+2*quiet)*module_size
+    img=_Img.new('RGB',(ns,ns),(255,255,255))
+    draw=_Draw.Draw(img)
+    for r in range(size):
+        for c in range(size):
+            if M[r][c]:
+                x0=(c+quiet)*module_size; y0=(r+quiet)*module_size
+                draw.rectangle([x0,y0,x0+module_size-1,y0+module_size-1],fill=color)
+    buf=_io.BytesIO(); img.save(buf,format='PNG')
+    return _b64.b64encode(buf.getvalue()).decode()
 
 
 try:
@@ -135,6 +174,7 @@ FACTORY_TAX = "—"
 raw_materials_list = [
     "راتنج كميائي صنف اول للديزل",
     "راتنج كميائي صنف ٢ للصرف الصحي",
+    "ريزن عادي",
     "ألياف (Mat 450)",
     "روفرز (Roving 600)",
     "تيسو (Tissue)",
@@ -1892,7 +1932,7 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
 # ==========================================
 elif menu == "📥 المشتريات والمخزن":
     st.subheader("📥 المشتريات والمخزن")
-    tabs = st.tabs(["🤝 مورد جديد","🚚 فاتورة توريد","💳 دفعات مورد","🔍 كشف حساب مورد","🔧 ضبط المخزن","📊 رصيد المخزن"])
+    tabs = st.tabs(["🤝 مورد جديد","🚚 فاتورة توريد","💳 دفعات مورد","🔍 كشف حساب مورد","🔧 ضبط المخزن","📊 رصيد المخزن","🗑️ حذف مورد"])
 
     with tabs[0]:
         with st.form("sf", clear_on_submit=True):
@@ -1916,7 +1956,11 @@ elif menu == "📥 المشتريات والمخزن":
             sup_id = int(sdf[sdf['original_name']==csup]['id'].iloc[0])
             inv_num = st.text_input("رقم الفاتورة:*", key=f"pin_{pck}")
             pay_tp = st.selectbox("نوع الدفع:", ["آجل","نقدي","دفع جزئي"], key=f"ppt_{pck}")
-            adv_proc = st.number_input("الدفعة المقدمة (ريال):", min_value=0.0, value=0.0, key=f"padv_{pck}")
+            adv_proc = 0.0
+            if pay_tp != "نقدي":
+                adv_proc = st.number_input("الدفعة المقدمة (ريال):", min_value=0.0, value=0.0, key=f"padv_{pck}")
+            else:
+                st.info("💵 دفع نقدي — لا يوجد دفعة مقدمة")
             st.markdown("**➕ إضافة بنود:**")
             with st.form("aitf", clear_on_submit=True):
                 ci1,ci2,ci3 = st.columns(3)
@@ -1931,10 +1975,17 @@ elif menu == "📥 المشتريات والمخزن":
                 idf = pd.DataFrame(st.session_state.pitems)
                 st.dataframe(idf, use_container_width=True)
                 sub = idf['الإجمالي'].sum(); vat=sub*0.15; grand=sub+vat; net_af=grand-adv_proc
-                st.markdown(f"**قبل الضريبة:** {sub:,.2f} | **ضريبة 15%:** {vat:,.2f} | **الإجمالي:** {grand:,.2f} | **بعد المقدم:** {net_af:,.2f}")
-                et = st.number_input("قيمة الفاتورة للتحقق:", min_value=0.0, value=round(grand,2), key=f"et_{pck}")
-                if abs(et-grand)>1: st.warning(f"⚠️ فرق {abs(et-grand):,.2f} ر!")
-                else: st.success("✅ القيمة مطابقة.")
+                # عرض الأرقام بشكل واضح
+                _c1,_c2,_c3,_c4 = st.columns(4)
+                _c1.metric("قبل الضريبة", f"{sub:,.2f} ر")
+                _c2.metric("ضريبة 15%", f"{vat:,.2f} ر")
+                _c3.metric("✅ إجمالي الفاتورة (مع الضريبة)", f"{grand:,.2f} ر")
+                _c4.metric("المتبقي بعد المقدم", f"{net_af:,.2f} ر")
+                # رصيد المورد المتبقي من كل فواتيره
+                _sup_total = float(run_query("SELECT COALESCE(SUM(total_price*1.15),0) as t FROM procurement WHERE supplier_id=:s",{"s":sup_id})['t'].iloc[0])
+                _sup_paid  = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE supplier_id=:s",{"s":sup_id})['t'].iloc[0])
+                _sup_bal   = _sup_total - _sup_paid
+                st.info(f"📊 إجمالي مستحقات المورد (كل الفواتير): **{_sup_total:,.2f} ر** | المدفوع: **{_sup_paid:,.2f} ر** | **الرصيد المتبقي: {_sup_bal:,.2f} ر**")
                 cb1,cb2 = st.columns(2)
                 if cb1.button("✅ اعتماد الفاتورة"):
                     if not inv_num: st.error("أدخل رقم الفاتورة!")
@@ -1995,17 +2046,112 @@ elif menu == "📥 المشتريات والمخزن":
             ds3 = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="sds3")
             de3 = d2.date_input("إلى:", datetime.date.today(), key="sde3")
             if st.button("📊 عرض كشف المورد"):
-                ph = run_query("SELECT date,material_name,quantity,unit_price,total_price,ROUND(CAST(total_price*1.15 AS numeric),2) as مع_الضريبة FROM procurement WHERE supplier_id=:sid AND date BETWEEN :s AND :e ORDER BY date",{"sid":sid3,"s":ds3,"e":de3})
-                pyh = run_query("SELECT payment_date,amount,payment_type,bank_name,notes FROM supplier_payments WHERE supplier_id=:sid AND payment_date BETWEEN :s AND :e ORDER BY payment_date",{"sid":sid3,"s":ds3,"e":de3})
-                ti = float(ph['مع_الضريبة'].sum()) if not ph.empty else 0.0
+                ph = run_query("""SELECT date,material_name,quantity,unit_price,total_price,
+                    ROUND(CAST(total_price*0.15 AS numeric),2) as الضريبة,
+                    ROUND(CAST(total_price*1.15 AS numeric),2) as مع_الضريبة
+                    FROM procurement WHERE supplier_id=:sid AND date BETWEEN :s AND :e ORDER BY date""",
+                    {"sid":sid3,"s":ds3,"e":de3})
+                pyh = run_query("""SELECT payment_date,amount,payment_type,bank_name,notes
+                    FROM supplier_payments WHERE supplier_id=:sid AND payment_date BETWEEN :s AND :e
+                    ORDER BY payment_date""",{"sid":sid3,"s":ds3,"e":de3})
+                ti  = float(ph['مع_الضريبة'].sum()) if not ph.empty else 0.0
                 tp2 = float(pyh['amount'].sum()) if not pyh.empty else 0.0
-                render_header()
-                st.markdown(f"<h3 style='text-align:center;'>كشف حساب مورد: {ss3} | {ds3} إلى {de3}</h3>", unsafe_allow_html=True)
-                st.write("**الفواتير:**"); st.dataframe(ph if not ph.empty else pd.DataFrame({"الحالة":["لا توجد"]}),use_container_width=True)
-                st.write("**المدفوعات:**"); st.dataframe(pyh if not pyh.empty else pd.DataFrame({"الحالة":["لا توجد"]}),use_container_width=True)
+                bal = ti - tp2
+                today_stmt = datetime.date.today().strftime("%Y/%m/%d")
+
+                # عرض في Streamlit
                 m1,m2,m3 = st.columns(3)
-                m1.metric("إجمالي الفواتير",f"{ti:,.2f} ر"); m2.metric("المدفوع",f"{tp2:,.2f} ر"); m3.metric("المستحق للمورد",f"{ti-tp2:,.2f} ر")
-                if not ph.empty: st.download_button("⬇️ تنزيل",df_to_csv(ph),f"sup_{ss3}.csv","text/csv")
+                m1.metric("إجمالي الفواتير (مع الضريبة)", f"{ti:,.2f} ر")
+                m2.metric("إجمالي المدفوع", f"{tp2:,.2f} ر")
+                m3.metric("🔴 المستحق للمورد", f"{bal:,.2f} ر")
+                if not ph.empty:
+                    st.markdown("#### الفواتير")
+                    st.dataframe(ph, use_container_width=True, hide_index=True)
+                if not pyh.empty:
+                    st.markdown("#### الدفعات")
+                    st.dataframe(pyh, use_container_width=True, hide_index=True)
+
+                # بناء HTML للطباعة
+                inv_rows_html = ""
+                if not ph.empty:
+                    for _,r in ph.iterrows():
+                        inv_rows_html += f"""<tr>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['date']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['material_name']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['quantity']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['unit_price']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['total_price']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['الضريبة']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{float(r['مع_الضريبة']):,.2f}</td>
+                        </tr>"""
+                pay_rows_html = ""
+                if not pyh.empty:
+                    for _,r in pyh.iterrows():
+                        pay_rows_html += f"""<tr>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_date']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;font-weight:700;">{float(r['amount']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_type']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r.get('bank_name','') or '—'}</td>
+                        </tr>"""
+                bal_color = "#dc2626" if bal > 0 else "#16a34a"
+                sup_stmt_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+.sup-card{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
+.sup-card h2{{font-size:16px;margin-bottom:4px;}} .sup-card p{{font-size:11px;opacity:.85;}}
+.period-box{{background:rgba(255,255,255,.2);border-radius:8px;padding:8px 14px;text-align:center;}}
+.period-box span{{display:block;font-size:10px;opacity:.8;}} .period-box strong{{font-size:13px;}}
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
+.s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+.s-card.danger{{border-top-color:#dc2626;background:#fef2f2;}}
+.s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;}}
+.section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:16px 0 8px 0;}}
+table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
+thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
+tbody tr:nth-child(even){{background:#f8fafc;}}
+.final-box{{background:#1E3A8A;color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:18px;}}
+.final-box .lbl{{font-size:13px;opacity:.85;}} .final-box .amount{{font-size:24px;font-weight:800;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+  <div style="text-align:left;"><div class="badge">كشف حساب مورد</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds3} — {de3}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_stmt}</p></div>
+</div>
+<div class="sup-card">
+  <div><h2>🤝 {ss3}</h2><p>المورد</p></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <div class="period-box"><span>من</span><strong>{ds3}</strong></div>
+    <div class="period-box"><span>إلى</span><strong>{de3}</strong></div>
+  </div>
+</div>
+<div class="summary">
+  <div class="s-card"><div class="lbl">إجمالي الفواتير (مع الضريبة)</div><div class="val">{ti:,.2f} ر</div></div>
+  <div class="s-card"><div class="lbl">إجمالي المدفوع</div><div class="val" style="color:#16a34a;">{tp2:,.2f} ر</div></div>
+  <div class="s-card danger"><div class="lbl">🔴 المستحق للمورد</div><div class="val" style="color:{bal_color};">{bal:,.2f} ر</div></div>
+</div>
+{"<div class='section-title'>📄 الفواتير الصادرة</div><table><thead><tr><th>التاريخ</th><th>المادة</th><th>الكمية</th><th>سعر الوحدة</th><th>قبل الضريبة</th><th>الضريبة 15%</th><th>مع الضريبة</th></tr></thead><tbody>" + inv_rows_html + "</tbody></table>" if inv_rows_html else ""}
+{"<div class='section-title'>💵 الدفعات المسددة</div><table><thead><tr><th>التاريخ</th><th>المبلغ (ر)</th><th>طريقة الدفع</th><th>البنك</th></tr></thead><tbody>" + pay_rows_html + "</tbody></table>" if pay_rows_html else ""}
+<div class="final-box">
+  <div><div class="lbl">الرصيد المستحق للمورد</div><div style="font-size:10px;opacity:.7;">Net Balance Due to Supplier</div></div>
+  <div class="amount">{bal:,.2f} ريال</div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_stmt}</span></div>
+</body></html>"""
+
+                col_s1, col_s2 = st.columns(2)
+                col_s1.download_button("⬇️ تنزيل CSV", df_to_csv(ph) if not ph.empty else df_to_csv(pd.DataFrame()), f"sup_{ss3}.csv", "text/csv")
+                col_s2.download_button("🖨️ طباعة كشف الحساب (HTML)",
+                    sup_stmt_html.encode('utf-8'),
+                    f"supplier_statement_{ss3}_{datetime.date.today()}.html",
+                    "text/html; charset=utf-8", key="dl_sup_stmt")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة")
 
     with tabs[4]:
         with st.form("adf2", clear_on_submit=True):
@@ -2019,6 +2165,36 @@ elif menu == "📥 المشتريات والمخزن":
         idf2 = run_query("SELECT material_name as المادة,quantity as الكمية FROM inventory ORDER BY material_name")
         st.dataframe(idf2 if not idf2.empty else pd.DataFrame(),use_container_width=True)
         if not idf2.empty: st.download_button("⬇️ تنزيل",df_to_csv(idf2),"inventory.csv","text/csv")
+
+    with tabs[6]:
+        st.markdown("### 🗑️ حذف مورد")
+        st.warning("⚠️ تنبيه: حذف المورد سيحذف جميع بياناته وفواتيره ودفعاته بشكل نهائي!")
+        del_sdf = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
+        if del_sdf.empty:
+            st.info("لا يوجد موردون.")
+        else:
+            del_sup = st.selectbox("اختر المورد للحذف:", del_sdf['original_name'].tolist(), key="del_sup")
+            del_sid = int(del_sdf[del_sdf['original_name']==del_sup]['id'].iloc[0])
+            # إحصائيات المورد
+            _del_inv_count = run_query("SELECT COUNT(*) as c FROM procurement WHERE supplier_id=:s",{"s":del_sid})
+            _del_pay_count = run_query("SELECT COUNT(*) as c FROM supplier_payments WHERE supplier_id=:s",{"s":del_sid})
+            st.info(f"📋 هذا المورد لديه: **{int(_del_inv_count['c'].iloc[0])} فاتورة** و **{int(_del_pay_count['c'].iloc[0])} دفعة** مسجلة")
+            if 'confirm_del_sup' not in st.session_state: st.session_state.confirm_del_sup = False
+            if st.button("🗑️ حذف هذا المورد نهائياً", type="primary"):
+                st.session_state.confirm_del_sup = True
+            if st.session_state.confirm_del_sup:
+                st.error(f"هل أنت متأكد من حذف المورد **{del_sup}** وكل بياناته؟")
+                col_yes, col_no = st.columns(2)
+                if col_yes.button("✅ نعم، احذف نهائياً", key="yes_del"):
+                    run_write("DELETE FROM supplier_payments WHERE supplier_id=:s",{"s":del_sid})
+                    run_write("DELETE FROM procurement WHERE supplier_id=:s",{"s":del_sid})
+                    run_write("DELETE FROM suppliers WHERE id=:s",{"s":del_sid})
+                    st.success(f"✅ تم حذف المورد [{del_sup}] وجميع بياناته!")
+                    st.session_state.confirm_del_sup = False
+                    st.rerun()
+                if col_no.button("❌ إلغاء", key="no_del"):
+                    st.session_state.confirm_del_sup = False
+                    st.rerun()
 
 # ==========================================
 # [5] الشحن والفواتير
@@ -2050,7 +2226,7 @@ elif menu == "💰 الشحن والفواتير":
             for i,sn in enumerate(serials_list))
         # QR data for delivery
         qr_do_data = f"DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|TANKS:{qty}|TYPE:{tu}|CAP:{tc}|DATE:{today_str}|DRIVER:{driver_name}|PLATE:{car_plate}"
-        _qr_do_b64 = make_qr_b64(qr_do_data, module_size=7)
+        _qr_do_b64 = make_qr_b64(qr_do_data, color=(30,58,138), module_size=7)
         _tpl_do = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -2097,7 +2273,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="hdr-right">
     <div class="badge">أمر التسليم رقم: {did}</div>
     <div class="badge-en">Delivery Note No. {did}</div>
-    <img src="data:image/png;base64,{_qr_do_b64}" style="width:90px;height:90px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
+    <img src="data:image/png;base64,{_qr_do_b64}" style="width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
     <p style="font-size:10px;color:#94a3b8;text-align:left;">التاريخ: {today_str}</p>
   </div>
 </div>
@@ -2149,8 +2325,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
               <td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">{tank_desc}</td>
             </tr>'''
             for i,sn in enumerate(serials_list))
-        qr_inv_text = f"INV:{inv_n}|SELLER:{FACTORY_NAME}|VAT:{FACTORY_TAX}|DATE:{today_str}|TOTAL:{grand:.2f}|TAX:{vat:.2f}|BUYER:{customer_name}"
-        _qr_inv_b64 = make_qr_b64(qr_inv_text, module_size=8)
+        qr_inv_data  = f"INV:{inv_n}|DO:{did}|ORDER:{oid}|CLIENT:{customer_name}|QTY:{qty}|TYPE:{tu}|CAP:{tc}|TOTAL:{grand:.2f}|NET:{net:.2f}|DATE:{today_str}|VAT_REG:{tax_number}"
+        _qr_inv_b64  = make_qr_b64(qr_inv_data, color=(220,38,38), module_size=7)
         _tpl_inv = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -2275,10 +2451,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         for i,sn in enumerate(serials_list):
             qr_text = f"SN:{sn}|ORDER:{order_id}|TYPE:{tu}|CAP:{tc}|INSTALL:{tt}|CLIENT:{customer_name}|MFG:{FACTORY_NAME}|DATE:{today_str}|SEQ:{i+1}OF{len(serials_list)}"
             labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
-        import json as _json
-        labels_js = _json.dumps([{"id": item["id"], "text": item["qr_text"]} for item in labels_data])
+        # توليد QR لكل بطاقة
         for item in labels_data:
-            item['qr_b64'] = make_qr_b64(item['qr_text'], module_size=9)
+            item['qr_b64'] = make_qr_b64(item['qr_text'], color=(30,58,138), module_size=9)
 
         # كل بطاقة في صفحة A4 مستقلة
         label_pages = ""
@@ -2411,6 +2586,7 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 </head>
 <body>
 {label_pages}
+
 </body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
@@ -2631,8 +2807,8 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                         adv_order = float(order_info['advance_paid'].iloc[0]) if not order_info.empty else 0
                         remaining_after = contract_val - adv_order - total_paid_so_far
 
-                        qr_rcpt = f"RCPT:{receipt_no}|SELLER:{FACTORY_NAME}|CLIENT:{sc4}|ORDER:{so4}|AMOUNT:{pa4:.2f}|METHOD:{pt4}|DATE:{today_r}"
-                        _qr_rcpt_b64 = make_qr_b64(qr_rcpt, module_size=8)
+                        qr_rcpt = f"RECEIPT:{receipt_no}|CLIENT:{sc4}|ORDER:{so4}|AMOUNT:{pa4:.2f}|METHOD:{pt4}|DATE:{today_r}"
+                        _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=6)
 
                         receipt_html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
