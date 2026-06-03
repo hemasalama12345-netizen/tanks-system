@@ -1971,11 +1971,16 @@ elif menu == "📥 المشتريات والمخزن":
         if sdf.empty:
             st.warning("أضف موردين أولاً.")
         else:
-            if 'pck'   not in st.session_state: st.session_state.pck   = 0
-            if 'pitems' not in st.session_state: st.session_state.pitems = []
+            if 'pck'      not in st.session_state: st.session_state.pck      = 0
+            if 'pitems'   not in st.session_state: st.session_state.pitems   = []
+            if 'last_sup' not in st.session_state: st.session_state.last_sup = ""
             pck    = st.session_state.pck
             csup   = st.selectbox("المورد:", sdf['original_name'].tolist(), key=f"psup_{pck}")
             sup_id = int(sdf[sdf['original_name']==csup]['id'].iloc[0])
+            # تصفير البنود تلقائياً عند تغيير المورد
+            if csup != st.session_state.last_sup:
+                st.session_state.pitems   = []
+                st.session_state.last_sup = csup
             inv_num = st.text_input("رقم الفاتورة:*", key=f"pin_{pck}")
             pay_tp  = st.selectbox("نوع الدفع:", ["آجل","نقدي","دفع جزئي"], key=f"ppt_{pck}")
             adv_proc = 0.0
@@ -3398,6 +3403,11 @@ elif menu == "🗑️ حذف كامل للبيانات":
             for t in ["sales_invoices","customer_payments","supplier_payments","delivery_orders","production_tanks","production_days","general_expenses","worker_salaries","worker_advances","workers","procurement","orders","customers","suppliers"]:
                 run_write(f"DELETE FROM {t}")
             run_write("UPDATE inventory SET quantity=0.0")
-            st.success("✅ تم حذف جميع البيانات!"); st.balloons()
+            # تصفير كامل لـ session_state حتى لا تظهر بيانات قديمة
+            keys_to_clear = [k for k in st.session_state.keys()]
+            for k in keys_to_clear:
+                del st.session_state[k]
+            st.success("✅ تم حذف جميع البيانات وتصفير الجلسة!"); st.balloons()
+            st.rerun()
     else:
         st.info("✅ العملية ملغاة.")
