@@ -2009,51 +2009,48 @@ elif menu == "📥 المشتريات والمخزن":
                     elif len(st.session_state.pitems) == 0:
                         st.error("❌ أضف بنداً واحداً على الأقل!")
                     else:
-                        import json as _json
-                        items_json = _json.dumps(st.session_state.pitems, ensure_ascii=False)
-                        # سجل واحد في procurement يمثل الفاتورة كاملة
-                        # material_name = أسماء المواد مختصرة | total_price = مجموع قبل الضريبة
-                        mat_summary = " / ".join(set(i['المادة'][:15] for i in st.session_state.pitems))
-                        ok_inv = run_write(
-                            """INSERT INTO procurement
-                               (supplier_id, invoice_number, material_name, quantity,
-                                unit_price, total_price, items_json)
-                               VALUES (:sid, :inv, :mat, :qty, :up, :tp, :ij)""",
-                            {"sid": sup_id,
-                             "inv": inv_num,
-                             "mat": mat_summary,
-                             "qty": len(st.session_state.pitems),
-                             "up":  round(sub / max(len(st.session_state.pitems),1), 2),
-                             "tp":  sub,
-                             "ij":  items_json})
+                        # ---- تجميع بيانات الفاتورة ----
+                        mat_summary = f"[{inv_num}] " + " / ".join(
+                            list(dict.fromkeys(i['المادة'][:12] for i in st.session_state.pitems)))
+                        n_items  = int(len(st.session_state.pitems))
+                        avg_up   = float(round(sub / max(n_items, 1), 2))
+                        total_fp = float(round(sub, 2))
 
-                        if not ok_inv:
-                            # fallback: العمودان invoice_number و items_json قد لا يوجدا بعد
-                            ok_inv = run_write(
-                                "INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:mat,:qty,:up,:tp)",
-                                {"sid":sup_id,"mat":mat_summary,"qty":len(st.session_state.pitems),"up":round(sub/max(len(st.session_state.pitems),1),2),"tp":sub})
+                        # ---- إدراج سجل واحد يمثل الفاتورة كاملة ----
+                        # نستخدم الأعمدة الموجودة فعلاً في الجدول فقط
+                        ok_inv = run_write(
+                            "INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:mat,:qty,:up,:tp)",
+                            {"sid": int(sup_id),
+                             "mat": mat_summary,
+                             "qty": n_items,
+                             "up":  avg_up,
+                             "tp":  total_fp})
 
                         if ok_inv:
-                            # تحديث المخزون لكل مادة
+                            # تحديث المخزون لكل مادة على حدة
                             for item in st.session_state.pitems:
                                 run_write(
                                     "UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m",
-                                    {"q": item['الكمية'], "m": item['المادة']})
+                                    {"q": float(item['الكمية']), "m": str(item['المادة'])})
 
                             # تسجيل الدفعة المقدمة إن وُجدت
                             if adv_proc > 0:
                                 new_pid_row = run_query(
                                     "SELECT id FROM procurement WHERE supplier_id=:sid ORDER BY id DESC LIMIT 1",
-                                    {"sid": sup_id})
+                                    {"sid": int(sup_id)})
                                 if not new_pid_row.empty:
                                     run_write(
                                         "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type) VALUES(:sid,:pid,:a,'مقدم')",
-                                        {"sid":sup_id,"pid":int(new_pid_row['id'].iloc[0]),"a":adv_proc})
+                                        {"sid": int(sup_id),
+                                         "pid": int(new_pid_row['id'].iloc[0]),
+                                         "a":   float(round(adv_proc, 2))})
 
-                            st.success(f"✅ تم اعتماد الفاتورة **{inv_num}** — {len(st.session_state.pitems)} بند — إجمالي مع الضريبة: **{grand:,.2f} ريال**")
+                            st.success(f"✅ تم اعتماد الفاتورة **{inv_num}** — {n_items} بنود — إجمالي مع الضريبة: **{grand:,.2f} ريال**")
                             st.session_state.pitems = []
                             st.session_state.pck   += 1
                             st.rerun()
+                        else:
+                            st.error("❌ فشل حفظ الفاتورة — تحقق من الاتصال بقاعدة البيانات")
 
                 if cb2.button("🗑️ مسح جميع البنود"):
                     st.session_state.pitems = []
@@ -2116,7 +2113,7 @@ elif menu == "📥 المشتريات والمخزن":
                     if st.button("💳 اعتماد الدفعة وإصدار الإيصال", type="primary", key=f"sp_btn_{spk}"):
                         ok = run_write(
                             "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",
-                            {"sid":sid2,"pid":pid,"a":sa,"pt":spt,"b":sb,"n":sn2})
+                            {"sid":int(sid2),"pid":int(pid),"a":float(round(sa,2)),"pt":str(spt),"b":str(sb or ""),"n":str(sn2 or "")})
                         if ok:
                             new_paid = inv_paid_so_far + sa
                             new_due  = inv_grand - new_paid
