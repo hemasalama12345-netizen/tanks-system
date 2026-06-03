@@ -1234,8 +1234,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                 real_remaining = float(ord_r['total_price']) * 1.15 - float(ord_r['advance_paid']) - total_received
 
                 # نسب الإنجاز
-                pct_prod = int(tanks_made/int(ord_r['qty'])*100) if int(ord_r['qty'])>0 else 0
-                pct_del = int(tanks_delivered/int(ord_r['qty'])*100) if int(ord_r['qty'])>0 else 0
+                pct_prod = min(100, int(tanks_made/int(ord_r['qty'])*100)) if int(ord_r['qty'])>0 else 0
+                pct_del = min(100, int(tanks_delivered/int(ord_r['qty'])*100)) if int(ord_r['qty'])>0 else 0
 
                 # عرض بطاقة الطلبية
                 _cap_a = str(ord_r['tank_capacity'] or '—').strip()
@@ -1268,7 +1268,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                     p4.metric("نسبة إنجاز التصنيع", f"{pct_prod}%")
 
                     # شريط تقدم التصنيع
-                    st.progress(pct_prod/100, text=f"التصنيع: {pct_prod}%")
+                    st.markdown(f"""<div style="background:#e2e8f0;border-radius:8px;height:16px;overflow:hidden;margin:4px 0 2px 0">
+<div style="background:{'#16a34a' if pct_prod==100 else '#d97706' if pct_prod>=50 else '#dc2626'};width:{min(100,pct_prod)}%;height:100%;border-radius:8px;"></div></div>
+<small style="color:#64748b">🏭 التصنيع: {pct_prod}%</small>""", unsafe_allow_html=True)
 
                     # آخر الورديات
                     shifts = run_query("""SELECT date,planned_qty,actual_qty,status
@@ -1287,7 +1289,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                     d3.metric("المتبقي للتسليم", f"{tanks_remaining_del} خزان")
                     d4.metric("نسبة إنجاز التسليم", f"{pct_del}%")
 
-                    st.progress(pct_del/100, text=f"التسليم: {pct_del}%")
+                    st.markdown(f"""<div style="background:#e2e8f0;border-radius:8px;height:16px;overflow:hidden;margin:4px 0 2px 0">
+<div style="background:{'#16a34a' if pct_del==100 else '#2563eb' if pct_del>=50 else '#94a3b8'};width:{min(100,pct_del)}%;height:100%;border-radius:8px;"></div></div>
+<small style="color:#64748b">🚚 التسليم: {pct_del}%</small>""", unsafe_allow_html=True)
 
                     # سجل التسليمات
                     deliveries = run_query("""SELECT delivery_date,shipped_qty,driver_name,car_plate
