@@ -1172,7 +1172,9 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                 pct_del = int(tanks_delivered/int(ord_r['qty'])*100) if int(ord_r['qty'])>0 else 0
 
                 # عرض بطاقة الطلبية
-                with st.expander(f"📦 {oid_a} | {ord_r['trade_name']} | {int(ord_r['qty'])} خزان | {ord_r['tank_use']} | القيمة: {float(ord_r['total_price']):,.0f} ر", expanded=False):
+                _cap_a = str(ord_r['tank_capacity'] or '—').strip()
+                _cap_a = _cap_a if _cap_a not in ('None','nan','') else '—'
+                with st.expander(f"📦 {oid_a} | {ord_r['trade_name']} | {int(ord_r['qty'])} خزان | {ord_r['tank_use']} {_cap_a} | القيمة: {float(ord_r['total_price']):,.0f} ر", expanded=False):
 
                     # القسم 1: بيانات العقد
                     st.markdown("#### 📋 بيانات العقد")
@@ -2036,7 +2038,9 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
         # ===== مرحلة 1: بدء وردية جديدة =====
         if st.session_state.prod_stage == 'new':
             st.markdown("### 🟢 بدء وردية جديدة")
-            opts = [f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان" for _,r in odf.iterrows()]
+            opts = [
+                f"{r['order_id']} | {r['trade_name']} | {r['qty']} خزان | سعة: {str(r['tank_capacity'] or '—').strip() or '—'}"
+                for _,r in odf.iterrows()]
             sel = st.selectbox("اختر الطلبية:", opts, key="prod_sel")
             oid = sel.split(" | ")[0]
             row = odf[odf['order_id']==oid].iloc[0]
@@ -2055,8 +2059,26 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
             # إعادة بناء MAT_MAP_KEYS بنوع الراتنج الصحيح
             MAT_MAP_KEYS = _build_mat_map(_resin_display)
 
+            # حساب الخزانات المتبقية للتصنيع
+            _total_order_qty = int(row['qty'])
+            _already_made = int(run_query(
+                "SELECT COALESCE(SUM(actual_qty),0) as t FROM production_days WHERE order_id=:oid AND status='مغلق'",
+                {"oid":oid})['t'].iloc[0])
+            _remaining_to_make = max(0, _total_order_qty - _already_made)
+
+            if _remaining_to_make == 0:
+                st.error(f"⛔ تم تصنيع كامل الطلبية ({_total_order_qty} خزان) — لا يمكن فتح وردية جديدة لهذه الطلبية.")
+            else:
+                st.info(f"📊 الطلبية: {_total_order_qty} خزان | المصنّع: {_already_made} | **المتاح للتصنيع: {_remaining_to_make} خزان**")
+
             c1,c2 = st.columns(2)
-            tanks_today = c1.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2, key="prod_planned_n")
+            tanks_today = c1.number_input(
+                f"عدد الخزانات المستهدفة اليوم (الحد الأقصى: {_remaining_to_make}):",
+                min_value=1,
+                max_value=max(1, _remaining_to_make),
+                value=min(2, max(1, _remaining_to_make)),
+                key="prod_planned_n",
+                disabled=(_remaining_to_make == 0))
             supervisor_inp = c2.text_input("اسم المشرف:", key="prod_sup_inp")
 
             resin_p  = float(row['resin_exp'] or 0)
@@ -2145,9 +2167,11 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
             else:
                 st.success("✅ المخزن كافٍ — يمكن بدء الوردية")
 
-            if st.button("🎬 بدء الوردية وصرف المواد من المخزن", type="primary"):
+            if st.button("🎬 بدء الوردية وصرف المواد من المخزن", type="primary", disabled=(_remaining_to_make == 0)):
                 if not supervisor_inp:
                     st.error("أدخل اسم المشرف!")
+                elif tanks_today > _remaining_to_make:
+                    st.error(f"⛔ لا يمكن إنتاج {tanks_today} خزان — المتبقي للتصنيع هو {_remaining_to_make} خزان فقط")
                 elif prod_shortages:
                     st.error("⛔ لا يمكن بدء الوردية — يوجد عجز في المواد الخام. أضف المواد أولاً.")
                 else:
@@ -3222,7 +3246,9 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
             if 'dok' not in st.session_state: st.session_state.dok = 0
             pck_d = st.session_state.dok
 
-            sel_d = st.selectbox("الطلبية:", [f"{r['order_id']} | {r['trade_name']}" for _,r in odf3.iterrows()], key=f"dsel_{pck_d}")
+            sel_d = st.selectbox("الطلبية:", [
+                f"{r['order_id']} | {r['trade_name']} | سعة: {str(r['tank_capacity'] or '—').strip() or '—'} | {r['tank_use']}"
+                for _,r in odf3.iterrows()], key=f"dsel_{pck_d}")
             oid_d = sel_d.split(" | ")[0]
             or_d  = odf3[odf3['order_id']==oid_d].iloc[0]
 
@@ -3330,8 +3356,12 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
         if dldf.empty:
             st.info("لا توجد أوامر تسليم.")
         else:
-            dl_opts = [f"أمر #{r['delivery_id']} | {r['order_id']} | {r['trade_name']} | {r['shipped_qty']} خزان" for _,r in dldf.iterrows()]
-            sel_dl = st.selectbox("اختر أمر التسليم:", dl_opts, key="inv_tab_sel")
+            # كل أمر تسليم له مفتاح فريد بناءً على delivery_id
+            # نعرض أولاً قائمة الاختيار
+            dl_opts = [
+                f"أمر #{r['delivery_id']} | {r['order_id']} | {r['trade_name']} | {r['shipped_qty']} خزان | {str(r['tank_capacity'] or '—').strip() or '—'}"
+                for _,r in dldf.iterrows()]
+            sel_dl = st.selectbox("اختر أمر التسليم لعرض فاتورته:", dl_opts, key="inv_tab_sel")
             did2 = int(sel_dl.split("#")[1].split(" ")[0])
             dr   = dldf[dldf['delivery_id']==did2].iloc[0]
 
@@ -3342,16 +3372,21 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
             net   = grand - adv_d
             today_str_inv = datetime.date.today().strftime("%Y/%m/%d")
 
-            # جلب الفاتورة المحفوظة إن وُجدت
-            saved_inv = run_query("SELECT invoice_id,invoice_date FROM sales_invoices WHERE delivery_id=:did",{"did":did2})
+            st.markdown(f"### 🧾 فاتورة أمر التسليم #{did2}")
+            st.markdown(f"**العميل:** {dr['trade_name']} | **الطلبية:** {dr['order_id']} | **نوع الخزان:** {_sv(dr['tank_use'])} سعة {_sv(dr['tank_capacity'])} — {_sv(dr['tank_type'])} | **الكمية:** {int(dr['shipped_qty'])} خزان")
+
+            # جلب الفاتورة المحفوظة لهذا الأمر تحديداً
+            saved_inv = run_query(
+                "SELECT invoice_id,invoice_date FROM sales_invoices WHERE delivery_id=:did",
+                {"did":did2})
             if not saved_inv.empty:
                 inv_n = f"INV-{did2}-{str(saved_inv['invoice_date'].iloc[0]).replace('-','')[:8]}"
-                st.success(f"✅ الفاتورة محفوظة مسبقاً — رقم: {inv_n}")
+                st.success(f"✅ الفاتورة محفوظة — رقم: {inv_n}")
             else:
                 inv_n = f"INV-{did2}-{datetime.date.today().strftime('%Y%m%d')}"
-                st.info(f"📋 فاتورة جديدة: {inv_n} — ستُحفظ تلقائياً عند الطباعة")
+                st.info(f"📋 فاتورة جديدة — ستُحفظ عند الضغط على حفظ")
 
-            # جلب الأرقام التسلسلية
+            # جلب الأرقام التسلسلية لهذا الأمر تحديداً
             _prev_off_inv = int(run_query(
                 "SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",
                 {"oid":str(dr['order_id']),"did":did2})['t'].iloc[0])
@@ -3363,24 +3398,31 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
             c1f,c2f,c3f,c4f = st.columns(4)
             c1f.metric("قبل الضريبة", f"{sub:,.2f} ر")
             c2f.metric("ضريبة 15%", f"{vat:,.2f} ر")
-            c3f.metric("إجمالي", f"{grand:,.2f} ر")
+            c3f.metric("إجمالي مع الضريبة", f"{grand:,.2f} ر")
             c4f.metric("الصافي المستحق", f"{net:,.2f} ر")
 
-            inv_html2 = make_invoice_html(inv_n, did2, dr['order_id'], dr['trade_name'],
+            # توليد HTML الفاتورة الخاصة بهذا الأمر
+            inv_html2 = make_invoice_html(
+                inv_n, did2, dr['order_id'], dr['trade_name'],
                 str(dr['cr_number'] or '—'), str(dr['tax_number'] or '—'),
                 str(dr['tank_use']), str(dr['tank_capacity'] or '—'), str(dr['tank_type']),
                 int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
                 sub, vat, grand, adv_d, net, today_str_inv)
 
             col_b1, col_b2 = st.columns(2)
-            col_b1.download_button("🖨️ طباعة الفاتورة (HTML)",
-                inv_html2.encode('utf-8'), f"{inv_n}.html", "text/html; charset=utf-8", key=f"dl_inv2_{did2}")
-            # حفظ تلقائي إذا لم تكن محفوظة
+            # مفتاح فريد لكل أمر تسليم — يضمن طباعة الفاتورة الصحيحة
+            col_b1.download_button(
+                f"🖨️ طباعة فاتورة أمر #{did2} (HTML)",
+                inv_html2.encode('utf-8'),
+                f"INV_{inv_n}.html",
+                "text/html; charset=utf-8",
+                key=f"dl_inv_do_{did2}")
             if saved_inv.empty:
-                if col_b2.button("💾 حفظ الفاتورة", key=f"save_inv_{did2}"):
-                    run_write("INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
-                              {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net})
-                    st.success(f"✅ تم حفظ الفاتورة {inv_n}!")
+                if col_b2.button("💾 حفظ الفاتورة", key=f"save_inv_do_{did2}"):
+                    run_write(
+                        "INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
+                        {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net})
+                    st.success(f"✅ تم حفظ فاتورة أمر التسليم #{did2}!")
                     st.rerun()
             else:
                 col_b2.success("✅ محفوظة في قاعدة البيانات")
