@@ -2004,38 +2004,146 @@ elif menu == "📥 المشتريات والمخزن":
 
     with tabs[2]:
         if 'spk' not in st.session_state: st.session_state.spk = 0
+        if 'sp_receipt_html' not in st.session_state: st.session_state.sp_receipt_html = None
+        if 'sp_receipt_ready' not in st.session_state: st.session_state.sp_receipt_ready = False
+
         sdf2 = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
         if not sdf2.empty:
-            with st.form(f"spf_{st.session_state.spk}", clear_on_submit=True):
-                ss = st.selectbox("المورد:", sdf2['original_name'].tolist())
-                sid2 = int(sdf2[sdf2['original_name']==ss]['id'].iloc[0])
-                prc = run_query("SELECT id,material_name,total_price,date FROM procurement WHERE supplier_id=:sid ORDER BY date DESC",{"sid":sid2})
-                if not prc.empty:
-                    popts = [f"#{r['id']} - {r['material_name']} - {r['total_price']:,.2f} ر - {r['date']}" for _,r in prc.iterrows()]
-                    sp = st.selectbox("الفاتورة:", popts)
-                    pid = int(sp.split("#")[1].split(" ")[0])
-                    sa = st.number_input("المبلغ:", min_value=0.0, value=0.0)
-                    spt = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي"])
-                    sb = st.text_input("البنك:")
-                    sn = st.text_input("ملاحظات:")
-                    if st.form_submit_button("💳 اعتماد الدفعة"):
-                        ok = run_write("INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",{"sid":sid2,"pid":pid,"a":sa,"pt":spt,"b":sb,"n":sn})
-                        if ok:
-                            pr = prc[prc['id']==pid].iloc[0]
-                            tp = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE procurement_id=:pid",{"pid":pid})['t'].iloc[0])
-                            rem = float(pr['total_price'])*1.15 - tp
-                            st.success("✅ تم تسجيل الدفعة! تم تصفير الحقول.")
-                            render_header()
-                            st.markdown(f"""
-                            <div style="border:1px solid #CBD5E1;padding:15px;border-radius:8px;">
-                            <h3 style="text-align:center;">إيصال دفع لمورد</h3>
-                            <p><b>المورد:</b> {ss} | <b>الفاتورة:</b> #{pid}</p>
-                            <p><b>المدفوع:</b> {sa:,.2f} ر | <b>الطريقة:</b> {spt}</p>
-                            <p><b>المتبقي:</b> {rem:,.2f} ر | <b>التاريخ:</b> {datetime.date.today()}</p>
-                            </div>""", unsafe_allow_html=True)
-                            st.session_state.spk+=1; st.rerun()
+            spk  = st.session_state.spk
+            ss   = st.selectbox("المورد:", sdf2['original_name'].tolist(), key=f"sp_sup_{spk}")
+            sid2 = int(sdf2[sdf2['original_name']==ss]['id'].iloc[0])
+
+            prc = run_query("""SELECT p.id,p.material_name,p.total_price,p.date,
+                COALESCE(SUM(sp2.amount),0) as paid
+                FROM procurement p
+                LEFT JOIN supplier_payments sp2 ON sp2.procurement_id=p.id
+                WHERE p.supplier_id=:sid
+                GROUP BY p.id,p.material_name,p.total_price,p.date
+                ORDER BY p.date DESC""", {"sid":sid2})
+
+            if prc.empty:
+                st.info("لا توجد فواتير لهذا المورد.")
+            else:
+                prc['مع_الضريبة'] = prc['total_price'] * 1.15
+                prc['المستحق']    = prc['مع_الضريبة'] - prc['paid']
+                popts = [
+                    f"#{r['id']} | {r['material_name'][:20]} | مستحق: {float(r['المستحق']):,.0f} ر | {r['date']}"
+                    for _,r in prc.iterrows()
+                ]
+                sp_sel  = st.selectbox("اختر الفاتورة:", popts, key=f"sp_inv_{spk}")
+                sp_idx  = popts.index(sp_sel)
+                sel_row = prc.iloc[sp_idx]
+                pid     = int(sel_row['id'])
+                inv_due = float(sel_row['المستحق'])
+                inv_grand = float(sel_row['مع_الضريبة'])
+                inv_paid_so_far = float(sel_row['paid'])
+
+                ca,cb,cc = st.columns(3)
+                ca.metric("إجمالي الفاتورة (مع الضريبة)", f"{inv_grand:,.2f} ر")
+                cb.metric("المدفوع سابقاً", f"{inv_paid_so_far:,.2f} ر")
+
+                if inv_due <= 0.5:
+                    cc.metric("المستحق", "مسدد ✅")
+                    st.error(f"⛔ لا يوجد مبلغ مستحق في هذه الفاتورة — الفاتورة مسددة بالكامل. جرّب فاتورة أخرى.")
                 else:
-                    st.info("لا توجد فواتير لهذا المورد.")
+                    cc.metric("🔴 المستحق", f"{inv_due:,.2f} ر")
+                    sa  = st.number_input("المبلغ المدفوع (ريال):", min_value=0.01,
+                                          max_value=round(float(inv_due),2),
+                                          value=round(float(inv_due),2), key=f"sp_amt_{spk}")
+                    spt = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"], key=f"sp_pt_{spk}")
+                    sb  = st.text_input("البنك / رقم الحوالة:", key=f"sp_bank_{spk}")
+                    sn2 = st.text_input("ملاحظات:", key=f"sp_notes_{spk}")
+
+                    if st.button("💳 اعتماد الدفعة وإصدار الإيصال", type="primary", key=f"sp_btn_{spk}"):
+                        ok = run_write(
+                            "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",
+                            {"sid":sid2,"pid":pid,"a":sa,"pt":spt,"b":sb,"n":sn2})
+                        if ok:
+                            new_paid = inv_paid_so_far + sa
+                            new_due  = inv_grand - new_paid
+                            today_r  = datetime.date.today().strftime("%Y/%m/%d")
+                            rcpt_no  = f"SPR-{pid}-{datetime.date.today().strftime('%Y%m%d')}"
+                            _qr_sp_b64 = make_qr_b64(
+                                f"RECEIPT:{rcpt_no}|SUP:{ss}|INV:#{pid}|AMT:{sa:.2f}|DATE:{today_r}",
+                                color=(30,58,138), module_size=6)
+                            due_color = "#16a34a" if new_due <= 0.5 else "#dc2626"
+                            due_label = f"{max(0,new_due):,.2f} ريال" + (" ✅ مسدد" if new_due<=0.5 else "")
+
+                            sp_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:28px;max-width:750px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;margin-bottom:3px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+.badge-en{{background:#eff6ff;color:#1E3A8A;padding:3px 12px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
+.qr-img{{width:70px;height:70px;border:2px solid #1E3A8A;border-radius:6px;}}
+.amt-box{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}}
+.amt-box .lbl{{font-size:13px;opacity:.85;}} .amt-box .lbl-en{{font-size:10px;opacity:.6;direction:ltr;}}
+.amt-box .val{{font-size:26px;font-weight:800;}}
+.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
+.ig{{background:#f8fafc;border-radius:8px;padding:10px;border-right:3px solid #1E3A8A;}}
+.ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:3px;}} .ig .val{{font-size:12px;font-weight:700;}}
+.bal{{background:#f1f5f9;border-radius:10px;padding:12px 16px;margin-bottom:14px;}}
+.bal h4{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}}
+.brow{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;}}
+.brow.total{{font-weight:700;font-size:13px;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:6px;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:14px;}}
+.sig-box{{text-align:center;flex:1;}}
+.sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
+.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:10px;color:#64748b;}}
+.footer{{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:15px;max-width:100%;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p><p style="margin-top:5px;">رقم الإيصال: <b>{rcpt_no}</b> | {today_r}</p></div>
+  <div class="hdr-right"><div class="badge">إيصال دفعة مورد</div><div class="badge-en">Supplier Payment Receipt</div><img class="qr-img" src="data:image/png;base64,{_qr_sp_b64}" alt="QR"></div>
+</div>
+<div class="amt-box">
+  <div><div class="lbl">المبلغ المدفوع</div><div class="lbl-en">Amount Paid</div></div>
+  <div class="val">{sa:,.2f} ريال</div>
+</div>
+<div class="grid2">
+  <div class="ig"><div class="lbl">المورد / Supplier</div><div class="val">{ss}</div></div>
+  <div class="ig"><div class="lbl">رقم الفاتورة / Invoice</div><div class="val">#{pid}</div></div>
+  <div class="ig"><div class="lbl">طريقة الدفع / Method</div><div class="val">{spt}</div></div>
+  <div class="ig"><div class="lbl">البنك / Bank</div><div class="val">{sb or "—"}</div></div>
+  <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
+  <div class="ig"><div class="lbl">ملاحظات / Notes</div><div class="val">{sn2 or "—"}</div></div>
+</div>
+<div class="bal">
+  <h4>📊 ملخص حساب الفاتورة</h4>
+  <div class="brow"><span>إجمالي الفاتورة (مع الضريبة)</span><span>{inv_grand:,.2f} ر</span></div>
+  <div class="brow"><span>المدفوع سابقاً</span><span>{inv_paid_so_far:,.2f} ر</span></div>
+  <div class="brow"><span>هذه الدفعة</span><span style="color:#1E3A8A;font-weight:700;">{sa:,.2f} ر</span></div>
+  <div class="brow total"><span>الرصيد المتبقي</span><span style="color:{due_color};">{due_label}</span></div>
+</div>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المورد</div><div class="sig-en">Supplier</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_r}</span></div>
+</body></html>"""
+                            st.session_state.sp_receipt_html  = sp_html
+                            st.session_state.sp_receipt_ready = True
+                            st.success(f"✅ دفعة {sa:,.2f} ريال | متبقي: {max(0,new_due):,.2f} ريال")
+                            st.session_state.spk += 1
+
+            if st.session_state.sp_receipt_ready and st.session_state.sp_receipt_html:
+                st.download_button("🖨️ طباعة الإيصال (HTML)",
+                    st.session_state.sp_receipt_html.encode('utf-8'),
+                    f"SupReceipt_{st.session_state.spk}.html",
+                    "text/html; charset=utf-8", key="dl_sp_rcpt")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة")
+                if st.button("🆕 دفعة جديدة", key="new_sp_pmt"):
+                    st.session_state.sp_receipt_ready = False
+                    st.session_state.sp_receipt_html  = None
+                    st.rerun()
+
 
     with tabs[3]:
         sdf3 = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
@@ -2046,15 +2154,24 @@ elif menu == "📥 المشتريات والمخزن":
             ds3 = d1.date_input("من:", datetime.date.today()-datetime.timedelta(days=90), key="sds3")
             de3 = d2.date_input("إلى:", datetime.date.today(), key="sde3")
             if st.button("📊 عرض كشف المورد"):
-                ph = run_query("""SELECT date,material_name,quantity,unit_price,total_price,
-                    ROUND(CAST(total_price*0.15 AS numeric),2) as الضريبة,
-                    ROUND(CAST(total_price*1.15 AS numeric),2) as مع_الضريبة
-                    FROM procurement WHERE supplier_id=:sid AND date BETWEEN :s AND :e ORDER BY date""",
-                    {"sid":sid3,"s":ds3,"e":de3})
-                pyh = run_query("""SELECT payment_date,amount,payment_type,bank_name,notes
-                    FROM supplier_payments WHERE supplier_id=:sid AND payment_date BETWEEN :s AND :e
-                    ORDER BY payment_date""",{"sid":sid3,"s":ds3,"e":de3})
-                ti  = float(ph['مع_الضريبة'].sum()) if not ph.empty else 0.0
+                # جلب الفواتير مع المدفوع لكل فاتورة
+                ph = run_query("""SELECT p.id as inv_id, p.date, p.material_name,
+                    ROUND(CAST(p.total_price*1.15 AS numeric),2) as قيمة_الفاتورة,
+                    COALESCE(SUM(sp2.amount),0) as المدفوع
+                    FROM procurement p
+                    LEFT JOIN supplier_payments sp2 ON sp2.procurement_id=p.id
+                    WHERE p.supplier_id=:sid AND p.date BETWEEN :s AND :e
+                    GROUP BY p.id,p.date,p.material_name,p.total_price
+                    ORDER BY p.date""", {"sid":sid3,"s":ds3,"e":de3})
+
+                # جلب الدفعات مع رقم الفاتورة المرتبطة
+                pyh = run_query("""SELECT sp2.payment_date, sp2.amount, sp2.payment_type,
+                    sp2.bank_name, sp2.procurement_id as inv_id
+                    FROM supplier_payments sp2
+                    WHERE sp2.supplier_id=:sid AND sp2.payment_date BETWEEN :s AND :e
+                    ORDER BY sp2.payment_date""", {"sid":sid3,"s":ds3,"e":de3})
+
+                ti  = float(ph['قيمة_الفاتورة'].sum()) if not ph.empty else 0.0
                 tp2 = float(pyh['amount'].sum()) if not pyh.empty else 0.0
                 bal = ti - tp2
                 today_stmt = datetime.date.today().strftime("%Y/%m/%d")
@@ -2065,33 +2182,43 @@ elif menu == "📥 المشتريات والمخزن":
                 m2.metric("إجمالي المدفوع", f"{tp2:,.2f} ر")
                 m3.metric("🔴 المستحق للمورد", f"{bal:,.2f} ر")
                 if not ph.empty:
+                    ph['المستحق'] = ph['قيمة_الفاتورة'] - ph['المدفوع']
                     st.markdown("#### الفواتير")
-                    st.dataframe(ph, use_container_width=True, hide_index=True)
+                    st.dataframe(ph[['inv_id','date','material_name','قيمة_الفاتورة','المدفوع','المستحق']].rename(columns={'inv_id':'رقم الفاتورة','date':'التاريخ','material_name':'المادة'}), use_container_width=True, hide_index=True)
                 if not pyh.empty:
                     st.markdown("#### الدفعات")
-                    st.dataframe(pyh, use_container_width=True, hide_index=True)
+                    st.dataframe(pyh.rename(columns={'payment_date':'التاريخ','amount':'المبلغ','payment_type':'الطريقة','bank_name':'البنك','inv_id':'رقم الفاتورة'}), use_container_width=True, hide_index=True)
 
-                # بناء HTML للطباعة
+                # ---- بناء HTML ----
+                # جدول: رقم الفاتورة | قيمة الفاتورة | المدفوع | المستحق
                 inv_rows_html = ""
+                running_bal = 0.0
                 if not ph.empty:
                     for _,r in ph.iterrows():
+                        fv  = float(r['قيمة_الفاتورة'])
+                        paid= float(r['المدفوع'])
+                        due = fv - paid
                         inv_rows_html += f"""<tr>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">#{int(r['inv_id'])}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['date']}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['material_name']}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['quantity']):,.2f}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['unit_price']):,.2f}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['total_price']):,.2f}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{float(r['الضريبة']):,.2f}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{float(r['مع_الضريبة']):,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{fv:,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;">{paid:,.2f}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{due:,.2f}</td>
                         </tr>"""
+
                 pay_rows_html = ""
                 if not pyh.empty:
+                    running = ti
                     for _,r in pyh.iterrows():
+                        running -= float(r['amount'])
                         pay_rows_html += f"""<tr>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_date']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">#{int(r['inv_id'])}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;font-weight:700;">{float(r['amount']):,.2f}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_type']}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r.get('bank_name','') or '—'}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{max(0,running):,.2f}</td>
                         </tr>"""
                 bal_color = "#dc2626" if bal > 0 else "#16a34a"
                 sup_stmt_html = f"""<!DOCTYPE html>
@@ -2136,8 +2263,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
   <div class="s-card"><div class="lbl">إجمالي المدفوع</div><div class="val" style="color:#16a34a;">{tp2:,.2f} ر</div></div>
   <div class="s-card danger"><div class="lbl">🔴 المستحق للمورد</div><div class="val" style="color:{bal_color};">{bal:,.2f} ر</div></div>
 </div>
-{"<div class='section-title'>📄 الفواتير الصادرة</div><table><thead><tr><th>التاريخ</th><th>المادة</th><th>الكمية</th><th>سعر الوحدة</th><th>قبل الضريبة</th><th>الضريبة 15%</th><th>مع الضريبة</th></tr></thead><tbody>" + inv_rows_html + "</tbody></table>" if inv_rows_html else ""}
-{"<div class='section-title'>💵 الدفعات المسددة</div><table><thead><tr><th>التاريخ</th><th>المبلغ (ر)</th><th>طريقة الدفع</th><th>البنك</th></tr></thead><tbody>" + pay_rows_html + "</tbody></table>" if pay_rows_html else ""}
+{"<div class='section-title'>📄 الفواتير (رقم الفاتورة | قيمة الفاتورة | المدفوع | المستحق)</div><table><thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>المادة</th><th>قيمة الفاتورة (ر)</th><th>المدفوع (ر)</th><th>المستحق (ر)</th></tr></thead><tbody>" + inv_rows_html + "</tbody></table>" if inv_rows_html else ""}
+{"<div class='section-title'>💵 الدفعات (تاريخ الدفعة | مبلغ الدفعة | الرصيد المتبقي)</div><table><thead><tr><th>تاريخ الدفعة</th><th>رقم الفاتورة</th><th>مبلغ الدفعة (ر)</th><th>طريقة الدفع</th><th>البنك</th><th>الرصيد الإجمالي المستحق</th></tr></thead><tbody>" + pay_rows_html + "</tbody></table>" if pay_rows_html else ""}
 <div class="final-box">
   <div><div class="lbl">الرصيد المستحق للمورد</div><div style="font-size:10px;opacity:.7;">Net Balance Due to Supplier</div></div>
   <div class="amount">{bal:,.2f} ريال</div>
