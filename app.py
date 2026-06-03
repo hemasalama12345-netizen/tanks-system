@@ -2268,6 +2268,16 @@ elif menu == "📥 المشتريات والمخزن":
                     WHERE p.supplier_id=:sid AND p.date BETWEEN :s AND :e
                     GROUP BY p.id,p.date,p.material_name,p.total_price
                     ORDER BY p.date""", {"sid":sid3,"s":ds3,"e":de3})
+                import re
+                # استخراج رقم الفاتورة الحقيقي من material_name
+                # الشكل المحفوظ: "[رقم الفاتورة] مادة1 / مادة2"
+                def _extract_inv_num(mat_name):
+                    m = re.match(r'^\[(.+?)\]', str(mat_name))
+                    return m.group(1) if m else str(mat_name)
+                if not ph.empty:
+                    ph['رقم_الفاتورة'] = ph['material_name'].apply(_extract_inv_num)
+                    ph['المواد'] = ph['material_name'].apply(
+                        lambda x: re.sub(r'^\[.+?\]\s*', '', str(x)))
 
                 # جلب الدفعات مع رقم الفاتورة المرتبطة
                 pyh = run_query("""SELECT sp2.payment_date, sp2.amount, sp2.payment_type,
@@ -2289,7 +2299,8 @@ elif menu == "📥 المشتريات والمخزن":
                 if not ph.empty:
                     ph['المستحق'] = ph['قيمة_الفاتورة'] - ph['المدفوع']
                     st.markdown("#### الفواتير")
-                    st.dataframe(ph[['inv_id','date','material_name','قيمة_الفاتورة','المدفوع','المستحق']].rename(columns={'inv_id':'رقم الفاتورة','date':'التاريخ','material_name':'المادة'}), use_container_width=True, hide_index=True)
+                    _ph_display = ph[['رقم_الفاتورة','date','المواد','قيمة_الفاتورة','المدفوع','المستحق']].rename(columns={'رقم_الفاتورة':'رقم الفاتورة','date':'التاريخ','المواد':'المواد الخام'})
+                    st.dataframe(_ph_display, use_container_width=True, hide_index=True)
                 if not pyh.empty:
                     st.markdown("#### الدفعات")
                     st.dataframe(pyh.rename(columns={'payment_date':'التاريخ','amount':'المبلغ','payment_type':'الطريقة','bank_name':'البنك','inv_id':'رقم الفاتورة'}), use_container_width=True, hide_index=True)
@@ -2304,9 +2315,9 @@ elif menu == "📥 المشتريات والمخزن":
                         paid= float(r['المدفوع'])
                         due = fv - paid
                         inv_rows_html += f"""<tr>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">#{int(r['inv_id'])}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#1E3A8A;">{_extract_inv_num(r['material_name'])}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['date']}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['material_name']}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;">{re.sub(r"^\[.+?\]\s*","",str(r['material_name']))}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{fv:,.2f}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;">{paid:,.2f}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{due:,.2f}</td>
@@ -2319,7 +2330,7 @@ elif menu == "📥 المشتريات والمخزن":
                         running -= float(r['amount'])
                         pay_rows_html += f"""<tr>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_date']}</td>
-                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">#{int(r['inv_id'])}</td>
+                          <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#1E3A8A;">{ph[ph['inv_id']==r['inv_id']]['رقم_الفاتورة'].iloc[0] if not ph[ph['inv_id']==r['inv_id']].empty else f"#{int(r['inv_id'])}"}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#16a34a;font-weight:700;">{float(r['amount']):,.2f}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r['payment_type']}</td>
                           <td style="padding:8px 10px;border:1px solid #e2e8f0;">{r.get('bank_name','') or '—'}</td>
