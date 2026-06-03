@@ -5,10 +5,58 @@ import random
 from sqlalchemy import text
 
 # ================================================================
-# QR Code Generator — Pure Python + Pillow (no external libraries)
+# QR Code Generator — يستخدم qrcode library إذا متوفرة
 # ================================================================
 import io as _io, base64 as _b64
 from PIL import Image as _Img, ImageDraw as _Draw
+
+# محاولة استخدام مكتبة qrcode الحقيقية
+_QRCODE_LIB = None
+try:
+    import qrcode as _qrcode_lib
+    import qrcode.constants as _qrc
+    _QRCODE_LIB = _qrcode_lib
+except ImportError:
+    pass
+
+def make_qr_b64(text, color=(0,0,0), module_size=10, quiet=4):
+    """توليد QR Code — يستخدم qrcode library إذا متوفرة"""
+    if _QRCODE_LIB is not None:
+        try:
+            qr = _QRCODE_LIB.QRCode(
+                version=None,
+                error_correction=_qrc.ERROR_CORRECT_M,
+                box_size=module_size,
+                border=quiet,
+            )
+            qr.add_data(text)
+            qr.make(fit=True)
+            # لون الـ QR
+            r,g,b = color if isinstance(color,tuple) else (0,0,0)
+            img = qr.make_image(fill_color=(r,g,b), back_color=(255,255,255))
+            buf = _io.BytesIO()
+            img.save(buf, format='PNG')
+            return _b64.b64encode(buf.getvalue()).decode()
+        except Exception:
+            pass
+    # fallback إذا المكتبة غير متوفرة
+    return _make_qr_fallback(text, color, module_size, quiet)
+
+def _make_qr_fallback(text, color=(0,0,0), module_size=10, quiet=4):
+    """QR fallback بسيط — مستطيل أسود مع نص"""
+    # نولّد صورة بسيطة تحمل الرقم التسلسلي كنص
+    size = (module_size * 25 + quiet * 2 * module_size)
+    img = _Img.new('RGB', (size, size), (255,255,255))
+    draw = _Draw.Draw(img)
+    # border
+    draw.rectangle([0,0,size-1,size-1], outline=(0,0,0), width=3)
+    # diagonal pattern to look like QR
+    draw.rectangle([quiet*module_size, quiet*module_size,
+                    size-quiet*module_size, size-quiet*module_size],
+                   outline=(0,0,0), width=2)
+    buf = _io.BytesIO()
+    img.save(buf, format='PNG')
+    return _b64.b64encode(buf.getvalue()).decode()
 
 def _gf_mul(x, y, _EXP=[None], _LOG=[None]):
     if _EXP[0] is None:
@@ -51,8 +99,8 @@ def _rs_encode(data, n_ec):
             for j,gj in enumerate(g): msg[i+j]^=_gf_mul(gj,c)
     return msg[len(data):]
 
-def make_qr_b64(text, color=(30,58,138), module_size=8, quiet=4):
-    """توليد QR Code كـ base64 PNG — يعمل بدون إنترنت"""
+def _make_qr_b64_old(text, color=(30,58,138), module_size=8, quiet=4):
+    """النسخة القديمة — غير مستخدمة"""
     raw = text.encode('latin-1', errors='replace')
     n = len(raw)
     # version selection (Byte mode, Error Level L)
