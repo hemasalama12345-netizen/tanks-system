@@ -1949,58 +1949,117 @@ elif menu == "📥 المشتريات والمخزن":
         if sdf.empty:
             st.warning("أضف موردين أولاً.")
         else:
-            if 'pck' not in st.session_state: st.session_state.pck = 0
+            if 'pck'   not in st.session_state: st.session_state.pck   = 0
             if 'pitems' not in st.session_state: st.session_state.pitems = []
-            pck = st.session_state.pck
-            csup = st.selectbox("المورد:", sdf['original_name'].tolist(), key=f"psup_{pck}")
+            pck    = st.session_state.pck
+            csup   = st.selectbox("المورد:", sdf['original_name'].tolist(), key=f"psup_{pck}")
             sup_id = int(sdf[sdf['original_name']==csup]['id'].iloc[0])
             inv_num = st.text_input("رقم الفاتورة:*", key=f"pin_{pck}")
-            pay_tp = st.selectbox("نوع الدفع:", ["آجل","نقدي","دفع جزئي"], key=f"ppt_{pck}")
+            pay_tp  = st.selectbox("نوع الدفع:", ["آجل","نقدي","دفع جزئي"], key=f"ppt_{pck}")
             adv_proc = 0.0
             if pay_tp != "نقدي":
                 adv_proc = st.number_input("الدفعة المقدمة (ريال):", min_value=0.0, value=0.0, key=f"padv_{pck}")
             else:
-                st.info("💵 دفع نقدي — لا يوجد دفعة مقدمة")
-            st.markdown("**➕ إضافة بنود:**")
-            with st.form("aitf", clear_on_submit=True):
+                st.info("💵 دفع نقدي — لا توجد دفعة مقدمة")
+
+            # ---- إضافة البنود ----
+            st.markdown("**➕ أضف مواد الفاتورة (بند بعد بند):**")
+            with st.form(f"aitf_{pck}", clear_on_submit=True):
                 ci1,ci2,ci3 = st.columns(3)
                 ms = ci1.selectbox("المادة:", raw_materials_list)
                 iq = ci2.number_input("الكمية:", min_value=0.0, value=0.0)
                 ip = ci3.number_input("سعر الوحدة:", min_value=0.0, value=0.0)
-                if st.form_submit_button("➕ إضافة"):
-                    if iq>0 and ip>0:
-                        st.session_state.pitems.append({"المادة":ms,"الكمية":iq,"سعر الوحدة":ip,"الإجمالي":iq*ip})
-                        st.success(f"✅ {ms}")
+                if st.form_submit_button("➕ إضافة بند"):
+                    if iq > 0 and ip > 0:
+                        st.session_state.pitems.append({
+                            "المادة": ms, "الكمية": iq,
+                            "سعر الوحدة": ip, "الإجمالي": round(iq*ip, 2)
+                        })
+                        st.rerun()
+                    else:
+                        st.warning("أدخل كمية وسعر صحيحين")
+
+            # ---- عرض البنود الحالية ----
             if st.session_state.pitems:
                 idf = pd.DataFrame(st.session_state.pitems)
-                st.dataframe(idf, use_container_width=True)
-                sub = idf['الإجمالي'].sum(); vat=sub*0.15; grand=sub+vat; net_af=grand-adv_proc
-                # عرض الأرقام بشكل واضح
+                st.dataframe(idf, use_container_width=True, hide_index=True)
+
+                sub   = round(idf['الإجمالي'].sum(), 2)
+                vat   = round(sub * 0.15, 2)
+                grand = round(sub + vat, 2)
+                net_af = round(grand - adv_proc, 2)
+
                 _c1,_c2,_c3,_c4 = st.columns(4)
-                _c1.metric("قبل الضريبة", f"{sub:,.2f} ر")
-                _c2.metric("ضريبة 15%", f"{vat:,.2f} ر")
-                _c3.metric("✅ إجمالي الفاتورة (مع الضريبة)", f"{grand:,.2f} ر")
-                _c4.metric("المتبقي بعد المقدم", f"{net_af:,.2f} ر")
-                # رصيد المورد المتبقي من كل فواتيره
+                _c1.metric("قبل الضريبة",              f"{sub:,.2f} ر")
+                _c2.metric("ضريبة 15%",                f"{vat:,.2f} ر")
+                _c3.metric("إجمالي الفاتورة مع الضريبة", f"{grand:,.2f} ر")
+                _c4.metric("المتبقي بعد المقدم",        f"{net_af:,.2f} ر")
+
                 _sup_total = float(run_query("SELECT COALESCE(SUM(total_price*1.15),0) as t FROM procurement WHERE supplier_id=:s",{"s":sup_id})['t'].iloc[0])
                 _sup_paid  = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE supplier_id=:s",{"s":sup_id})['t'].iloc[0])
-                _sup_bal   = _sup_total - _sup_paid
-                st.info(f"📊 إجمالي مستحقات المورد (كل الفواتير): **{_sup_total:,.2f} ر** | المدفوع: **{_sup_paid:,.2f} ر** | **الرصيد المتبقي: {_sup_bal:,.2f} ر**")
-                cb1,cb2 = st.columns(2)
-                if cb1.button("✅ اعتماد الفاتورة"):
-                    if not inv_num: st.error("أدخل رقم الفاتورة!")
+                st.info(f"📊 رصيد المورد الحالي: إجمالي فواتيره {_sup_total:,.2f} ر | مدفوع {_sup_paid:,.2f} ر | **مستحق {_sup_total-_sup_paid:,.2f} ر**")
+
+                st.markdown("---")
+                cb1, cb2 = st.columns(2)
+
+                # ---- اعتماد الفاتورة كوحدة واحدة ----
+                if cb1.button("✅ اعتماد الفاتورة كاملةً", type="primary"):
+                    if not inv_num:
+                        st.error("❌ أدخل رقم الفاتورة أولاً!")
+                    elif len(st.session_state.pitems) == 0:
+                        st.error("❌ أضف بنداً واحداً على الأقل!")
                     else:
-                        for item in st.session_state.pitems:
-                            run_write("INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:m,:q,:up,:tp)",{"sid":sup_id,"m":item['المادة'],"q":item['الكمية'],"up":item['سعر الوحدة'],"tp":item['الإجمالي']})
-                            run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m",{"q":item['الكمية'],"m":item['المادة']})
-                        if adv_proc>0:
-                            pl = run_query("SELECT id FROM procurement WHERE supplier_id=:sid ORDER BY id DESC LIMIT 1",{"sid":sup_id})
-                            if not pl.empty:
-                                run_write("INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type) VALUES(:sid,:pid,:a,'مقدم')",{"sid":sup_id,"pid":int(pl['id'].iloc[0]),"a":adv_proc})
-                        st.success(f"✅ تم اعتماد الفاتورة {inv_num}!")
-                        st.session_state.pitems=[]; st.session_state.pck+=1; st.rerun()
-                if cb2.button("🗑️ مسح البنود"):
-                    st.session_state.pitems=[]; st.rerun()
+                        import json as _json
+                        items_json = _json.dumps(st.session_state.pitems, ensure_ascii=False)
+                        # سجل واحد في procurement يمثل الفاتورة كاملة
+                        # material_name = أسماء المواد مختصرة | total_price = مجموع قبل الضريبة
+                        mat_summary = " / ".join(set(i['المادة'][:15] for i in st.session_state.pitems))
+                        ok_inv = run_write(
+                            """INSERT INTO procurement
+                               (supplier_id, invoice_number, material_name, quantity,
+                                unit_price, total_price, items_json)
+                               VALUES (:sid, :inv, :mat, :qty, :up, :tp, :ij)""",
+                            {"sid": sup_id,
+                             "inv": inv_num,
+                             "mat": mat_summary,
+                             "qty": len(st.session_state.pitems),
+                             "up":  round(sub / max(len(st.session_state.pitems),1), 2),
+                             "tp":  sub,
+                             "ij":  items_json})
+
+                        if not ok_inv:
+                            # fallback: العمودان invoice_number و items_json قد لا يوجدا بعد
+                            ok_inv = run_write(
+                                "INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:mat,:qty,:up,:tp)",
+                                {"sid":sup_id,"mat":mat_summary,"qty":len(st.session_state.pitems),"up":round(sub/max(len(st.session_state.pitems),1),2),"tp":sub})
+
+                        if ok_inv:
+                            # تحديث المخزون لكل مادة
+                            for item in st.session_state.pitems:
+                                run_write(
+                                    "UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m",
+                                    {"q": item['الكمية'], "m": item['المادة']})
+
+                            # تسجيل الدفعة المقدمة إن وُجدت
+                            if adv_proc > 0:
+                                new_pid_row = run_query(
+                                    "SELECT id FROM procurement WHERE supplier_id=:sid ORDER BY id DESC LIMIT 1",
+                                    {"sid": sup_id})
+                                if not new_pid_row.empty:
+                                    run_write(
+                                        "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type) VALUES(:sid,:pid,:a,'مقدم')",
+                                        {"sid":sup_id,"pid":int(new_pid_row['id'].iloc[0]),"a":adv_proc})
+
+                            st.success(f"✅ تم اعتماد الفاتورة **{inv_num}** — {len(st.session_state.pitems)} بند — إجمالي مع الضريبة: **{grand:,.2f} ريال**")
+                            st.session_state.pitems = []
+                            st.session_state.pck   += 1
+                            st.rerun()
+
+                if cb2.button("🗑️ مسح جميع البنود"):
+                    st.session_state.pitems = []
+                    st.rerun()
+            else:
+                st.info("📋 لم تُضف بنوداً بعد — أضف مواد الفاتورة أعلاه.")
 
     with tabs[2]:
         if 'spk' not in st.session_state: st.session_state.spk = 0
