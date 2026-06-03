@@ -943,36 +943,22 @@ elif menu == "📦 الطلبيات":
             inv_now = run_query("SELECT material_name,quantity FROM inventory")
             inv_dict = {r['material_name']: float(r['quantity']) for _,r in inv_now.iterrows()} if not inv_now.empty else {}
 
-            # احتياج الطلبيات الأخرى الجارية (غير المصنعة بعد)
-            active_ord = run_query("""
-                SELECT o.qty,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp,
-                       COALESCE((SELECT SUM(pd.actual_qty) FROM production_days pd WHERE pd.order_id=o.order_id AND pd.status='مغلق'),0) as made
-                FROM orders o WHERE o.status='قيد التنفيذ'
-            """)
-            reserved = {k:0.0 for k in this_order_needs}
-            if not active_ord.empty:
-                for _,ar in active_ord.iterrows():
-                    remaining_tanks = max(0, int(ar['qty']) - int(ar['made']))
-                    if remaining_tanks > 0:
-                        reserved[resin_type_sel] = reserved.get(resin_type_sel, 0.0) + remaining_tanks * float(ar['resin_exp'] or 0)
-                        reserved["ألياف (Mat 450)"]              += remaining_tanks * float(ar['mat_exp'] or 0)
-                        reserved["روفرز (Roving 600)"]           += remaining_tanks * float(ar['roving_exp'] or 0)
-                        reserved["تيسو (Tissue)"]                += remaining_tanks * float(ar['tissue_exp'] or 0)
-                        reserved["مصلد (Catalyst)"]              += remaining_tanks * float(ar['catalyst_exp'] or 0)
-                        reserved["كربونات الكالسيوم"]            += remaining_tanks * float(ar['calcium_exp'] or 0)
-                        reserved["سيليكا (Silica)"]              += remaining_tanks * float(ar['silica_exp'] or 0)
-
-            # حساب النواقص
+            # مقارنة مباشرة بالمخزن الفعلي — بدون خصم "محجوز"
+            # لأن المخزن يُخصم فعلياً عند بدء كل وردية إنتاج
             shortages = {}
             check_rows = []
             for mat, needed in this_order_needs.items():
                 if needed <= 0: continue
                 stock    = inv_dict.get(mat, 0.0)
-                res      = reserved.get(mat, 0.0)
-                available = max(0.0, stock - res)
-                shortage  = max(0.0, needed - available)
+                shortage = max(0.0, needed - stock)
                 status_icon = "✅" if shortage == 0 else "🔴"
-                check_rows.append({"المادة":mat, "المخزون":f"{stock:,.2f}", "محجوز للطلبيات":f"{res:,.2f}", "متاح":f"{available:,.2f}", "مطلوب":f"{needed:,.2f}", "العجز":f"{shortage:,.2f}", "الحالة":status_icon})
+                check_rows.append({
+                    "المادة":    mat,
+                    "المخزون":  f"{stock:,.2f}",
+                    "مطلوب":    f"{needed:,.2f}",
+                    "العجز":    f"{shortage:,.2f}",
+                    "الحالة":   status_icon
+                })
                 if shortage > 0:
                     shortages[mat] = shortage
 
