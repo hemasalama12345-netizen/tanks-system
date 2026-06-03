@@ -2125,20 +2125,39 @@ elif menu == "📥 المشتريات والمخزن":
 
                 if inv_due <= 0.5:
                     cc.metric("المستحق", "مسدد ✅")
-                    st.error(f"⛔ لا يوجد مبلغ مستحق في هذه الفاتورة — الفاتورة مسددة بالكامل. جرّب فاتورة أخرى.")
+                    st.warning("━" * 40)
+                    st.error("⛔ لا توجد دفعات مستحقة في هذه الفاتورة")
+                    st.info("✅ هذه الفاتورة مسددة بالكامل — الرجاء اختيار فاتورة أخرى من القائمة أعلاه.")
                 else:
-                    cc.metric("🔴 المستحق", f"{inv_due:,.2f} ر")
-                    sa  = st.number_input("المبلغ المدفوع (ريال):", min_value=0.01,
-                                          max_value=round(float(inv_due),2),
-                                          value=round(float(inv_due),2), key=f"sp_amt_{spk}")
-                    spt = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"], key=f"sp_pt_{spk}")
-                    sb  = st.text_input("البنك / رقم الحوالة:", key=f"sp_bank_{spk}")
-                    sn2 = st.text_input("ملاحظات:", key=f"sp_notes_{spk}")
+                    cc.metric("🔴 المستحق الآن", f"{inv_due:,.2f} ر")
+                    _max_pay = round(float(inv_due), 2)
+                    sa = st.number_input(
+                        f"المبلغ المدفوع (ريال) — الحد الأقصى: {_max_pay:,.2f} ر:",
+                        min_value=0.01,
+                        max_value=_max_pay,
+                        value=_max_pay,
+                        key=f"sp_amt_{spk}")
 
-                    if st.button("💳 اعتماد الدفعة وإصدار الإيصال", type="primary", key=f"sp_btn_{spk}"):
-                        ok = run_write(
-                            "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",
-                            {"sid":int(sid2),"pid":int(pid),"a":float(round(sa,2)),"pt":str(spt),"b":str(sb or ""),"n":str(sn2 or "")})
+                    # تحقق إضافي: لا يمكن الدفع أكثر من المستحق
+                    if sa > _max_pay + 0.01:
+                        st.error(f"⛔ المبلغ المدخل ({sa:,.2f} ر) يتجاوز المستحق ({_max_pay:,.2f} ر) — لا يمكن الدفع أكثر من المستحق")
+                    else:
+                        spt = st.selectbox("طريقة الدفع:", ["نقدي","تحويل بنكي","شبكة مدى"], key=f"sp_pt_{spk}")
+                        sb  = st.text_input("البنك / رقم الحوالة:", key=f"sp_bank_{spk}")
+                        sn2 = st.text_input("ملاحظات:", key=f"sp_notes_{spk}")
+
+                        if st.button("💳 اعتماد الدفعة وإصدار الإيصال", type="primary", key=f"sp_btn_{spk}"):
+                            # تحقق نهائي من قاعدة البيانات قبل الحفظ
+                            _live_paid = float(run_query(
+                                "SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE procurement_id=:pid",
+                                {"pid":int(pid)})['t'].iloc[0])
+                            _live_due = inv_grand - _live_paid
+                            if sa > _live_due + 0.01:
+                                st.error(f"⛔ المبلغ ({sa:,.2f} ر) يتجاوز المستحق الفعلي ({_live_due:,.2f} ر) — تم تحديث البيانات، حاول مرة أخرى.")
+                                st.rerun()
+                            ok = run_write(
+                                "INSERT INTO supplier_payments(supplier_id,procurement_id,amount,payment_type,bank_name,notes) VALUES(:sid,:pid,:a,:pt,:b,:n)",
+                                {"sid":int(sid2),"pid":int(pid),"a":float(round(sa,2)),"pt":str(spt),"b":str(sb or ""),"n":str(sn2 or "")})
                         if ok:
                             new_paid = inv_paid_so_far + sa
                             new_due  = inv_grand - new_paid
