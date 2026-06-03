@@ -183,6 +183,19 @@ raw_materials_list = [
     "سيليكا (Silica)"
 ]
 
+def ensure_inventory_rows():
+    """يضمن وجود صف لكل مادة في جدول inventory — يُنشئ الصف بصفر إذا لم يكن موجوداً"""
+    for mat in raw_materials_list:
+        run_write(
+            "INSERT INTO inventory(material_name,quantity) VALUES(:m,0) ON CONFLICT(material_name) DO NOTHING",
+            {"m": mat})
+
+# تشغيل عند كل إعادة تحميل للتأكد من وجود كل المواد
+try:
+    ensure_inventory_rows()
+except Exception:
+    pass  # تجاهل لو الجدول غير موجود بعد
+
 st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v7.0", layout="wide")
 st.markdown("""
 <style>
@@ -1771,7 +1784,10 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
                     }
                     for mat, qty in mat_map_full.items():
                         if qty > 0:
-                            run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":qty,"m":mat})
+                            run_write(
+                                """INSERT INTO inventory(material_name,quantity) VALUES(:m,0)
+                                   ON CONFLICT(material_name) DO NOTHING""", {"m":mat})
+                            run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":float(qty),"m":str(mat)})
                     ok_s = run_write("INSERT INTO production_days(order_id,planned_qty,date) VALUES(:oid,:pq,:d)", {"oid":oid,"pq":tanks_today,"d":datetime.date.today()})
                     if ok_s:
                         sid_row = run_query("SELECT id FROM production_days WHERE order_id=:oid ORDER BY id DESC LIMIT 1", {"oid":oid})
@@ -1843,12 +1859,18 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
                 inv_mat_map = {v:k for k,v in MAT_MAP_KEYS.items()}
                 for mat_short, qty in return_items.items():
                     mat_full = MAT_MAP_KEYS.get(mat_short, mat_short)
-                    run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m", {"q":qty,"m":mat_full})
+                    run_write(
+                        """INSERT INTO inventory(material_name,quantity) VALUES(:m,0)
+                           ON CONFLICT(material_name) DO NOTHING""", {"m":str(mat_full)})
+                    run_write("UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m", {"q":float(qty),"m":str(mat_full)})
 
                 # تنفيذ الصرف الإضافي
                 for mat_short, qty in extra_items.items():
                     mat_full = MAT_MAP_KEYS.get(mat_short, mat_short)
-                    run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":qty,"m":mat_full})
+                    run_write(
+                        """INSERT INTO inventory(material_name,quantity) VALUES(:m,0)
+                           ON CONFLICT(material_name) DO NOTHING""", {"m":str(mat_full)})
+                    run_write("UPDATE inventory SET quantity=quantity-:q WHERE material_name=:m", {"q":float(qty),"m":str(mat_full)})
 
                 # إغلاق الوردية وإنشاء الأرقام التسلسلية
                 run_write("UPDATE production_days SET actual_qty=:aq,status='مغلق' WHERE id=:sid", {"aq":actual_qty_inp,"sid":sid})
@@ -2027,11 +2049,14 @@ elif menu == "📥 المشتريات والمخزن":
                              "tp":  total_fp})
 
                         if ok_inv:
-                            # تحديث المخزون لكل مادة على حدة
+                            # تحديث المخزون لكل مادة على حدة (UPSERT — ينشئ الصف لو مش موجود)
                             for item in st.session_state.pitems:
                                 run_write(
-                                    "UPDATE inventory SET quantity=quantity+:q WHERE material_name=:m",
-                                    {"q": float(item['الكمية']), "m": str(item['المادة'])})
+                                    """INSERT INTO inventory(material_name,quantity)
+                                       VALUES(:m,:q)
+                                       ON CONFLICT(material_name)
+                                       DO UPDATE SET quantity=inventory.quantity+EXCLUDED.quantity""",
+                                    {"m": str(item['المادة']), "q": float(item['الكمية'])})
 
                             # تسجيل الدفعة المقدمة إن وُجدت
                             if adv_proc > 0:
@@ -2341,7 +2366,10 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
             ma = st.selectbox("المادة:", raw_materials_list)
             nq = st.number_input("الرصيد الجديد:", min_value=0.0)
             if st.form_submit_button("✅ تحديث"):
-                if run_write("UPDATE inventory SET quantity=:q WHERE material_name=:m",{"q":nq,"m":ma}):
+                if run_write(
+                    """INSERT INTO inventory(material_name,quantity) VALUES(:m,:q)
+                       ON CONFLICT(material_name) DO UPDATE SET quantity=EXCLUDED.quantity""",
+                    {"m":ma,"q":float(nq)}):
                     st.success(f"✅ تم تحديث [{ma}]!")
 
     with tabs[5]:
