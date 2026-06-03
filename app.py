@@ -1912,15 +1912,39 @@ elif menu == "🏭 التصنيع":
     if 'prod_tank_serials' not in st.session_state: st.session_state.prod_tank_serials = []
     if 'prod_supervisor' not in st.session_state: st.session_state.prod_supervisor = ''
 
-    MAT_MAP_KEYS = {
-        "راتنج":       "راتنج كميائي صنف اول للديزل",
-        "ألياف Mat":   "ألياف (Mat 450)",
-        "روفرز":       "روفرز (Roving 600)",
-        "تيسو":        "تيسو (Tissue)",
-        "مصلد":        "مصلد (Catalyst)",
-        "كالسيوم":     "كربونات الكالسيوم",
-        "سيليكا":      "سيليكا (Silica)",
-    }
+    # نوع الراتنج يُحدَّد ديناميكياً حسب الطلبية
+    _RESIN_OPTIONS = [
+        "راتنج كميائي صنف اول للديزل",
+        "راتنج كميائي صنف ٢ للصرف الصحي",
+        "ريزن عادي"
+    ]
+    def _get_resin_type(oid):
+        """يجلب نوع الراتنج المحدد لهذه الطلبية"""
+        # أولاً: تحقق من session_state
+        if st.session_state.get(f'resin_type_{oid}'):
+            return st.session_state[f'resin_type_{oid}']
+        # ثانياً: حاول جلبه من عمود resin_type في DB (إذا وُجد)
+        try:
+            rt = run_query("SELECT resin_type FROM orders WHERE order_id=:oid", {"oid":oid})
+            if not rt.empty and rt['resin_type'].iloc[0]:
+                return str(rt['resin_type'].iloc[0])
+        except Exception:
+            pass
+        # افتراضي: الأول في القائمة
+        return _RESIN_OPTIONS[0]
+
+    def _build_mat_map(resin_type):
+        return {
+            "راتنج":       resin_type,
+            "ألياف Mat":   "ألياف (Mat 450)",
+            "روفرز":       "روفرز (Roving 600)",
+            "تيسو":        "تيسو (Tissue)",
+            "مصلد":        "مصلد (Catalyst)",
+            "كالسيوم":     "كربونات الكالسيوم",
+            "سيليكا":      "سيليكا (Silica)",
+        }
+
+    MAT_MAP_KEYS = _build_mat_map(_RESIN_OPTIONS[0])  # افتراضي، سيُحدَّث عند اختيار الطلبية
 
     def make_dispatch_html(oid, order_row, calc_dict, planned_qty, shift_id, supervisor, title="أمر صرف مواد خام"):
         today_str = datetime.date.today().strftime("%Y/%m/%d")
@@ -2027,6 +2051,21 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
             sel = st.selectbox("اختر الطلبية:", opts, key="prod_sel")
             oid = sel.split(" | ")[0]
             row = odf[odf['order_id']==oid].iloc[0]
+
+            # ---- تحديد نوع الراتنج للطلبية المختارة ----
+            _order_resin_type = _get_resin_type(oid)
+            _resin_idx = _RESIN_OPTIONS.index(_order_resin_type) if _order_resin_type in _RESIN_OPTIONS else 0
+            _resin_display = st.selectbox(
+                "نوع الراتنج للطلبية:",
+                _RESIN_OPTIONS,
+                index=_resin_idx,
+                key=f"prod_resin_{oid}",
+                help="يُحدَّد من الطلبية — يمكن تغييره إذا لزم")
+            # حفظ الاختيار
+            st.session_state[f'resin_type_{oid}'] = _resin_display
+            # إعادة بناء MAT_MAP_KEYS بنوع الراتنج الصحيح
+            MAT_MAP_KEYS = _build_mat_map(_resin_display)
+
             c1,c2 = st.columns(2)
             tanks_today = c1.number_input("عدد الخزانات المستهدفة اليوم:", min_value=1, value=2, key="prod_planned_n")
             supervisor_inp = c2.text_input("اسم المشرف:", key="prod_sup_inp")
@@ -2058,15 +2097,8 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
             st.caption("💡 افتح الملف في المتصفح ثم Ctrl+P للطباعة")
 
             # ========== فحص المخزن قبل بدء الوردية ==========
-            mat_map_full_chk = {
-                "راتنج كميائي صنف اول للديزل": calc["راتنج"],
-                "ألياف (Mat 450)":              calc["ألياف Mat"],
-                "روفرز (Roving 600)":           calc["روفرز"],
-                "تيسو (Tissue)":                calc["تيسو"],
-                "مصلد (Catalyst)":              calc["مصلد"],
-                "كربونات الكالسيوم":            calc["كالسيوم"],
-                "سيليكا (Silica)":              calc["سيليكا"],
-            }
+            # MAT_MAP_KEYS محدَّث بنوع الراتنج الصحيح أعلاه
+            mat_map_full_chk = {MAT_MAP_KEYS[k]: v for k,v in calc.items() if v > 0}
             inv_chk = run_query("SELECT material_name,quantity FROM inventory")
             inv_chk_dict = {r['material_name']: float(r['quantity']) for _,r in inv_chk.iterrows()} if not inv_chk.empty else {}
             prod_shortages = {m:q for m,q in mat_map_full_chk.items() if q > 0 and inv_chk_dict.get(m,0) < q}
@@ -2130,15 +2162,7 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
                 elif prod_shortages:
                     st.error("⛔ لا يمكن بدء الوردية — يوجد عجز في المواد الخام. أضف المواد أولاً.")
                 else:
-                    mat_map_full = {
-                        "راتنج كميائي صنف اول للديزل": calc["راتنج"],
-                        "ألياف (Mat 450)":              calc["ألياف Mat"],
-                        "روفرز (Roving 600)":           calc["روفرز"],
-                        "تيسو (Tissue)":                calc["تيسو"],
-                        "مصلد (Catalyst)":              calc["مصلد"],
-                        "كربونات الكالسيوم":            calc["كالسيوم"],
-                        "سيليكا (Silica)":              calc["سيليكا"],
-                    }
+                    mat_map_full = {MAT_MAP_KEYS[k]: v for k,v in calc.items()}
                     for mat, qty in mat_map_full.items():
                         if qty > 0:
                             run_write(
@@ -2168,6 +2192,9 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
             calc      = st.session_state.prod_calc
             supervisor= st.session_state.prod_supervisor
             row       = odf[odf['order_id']==oid].iloc[0] if oid in odf['order_id'].values else odf.iloc[0]
+            # تحديث MAT_MAP_KEYS بنوع الراتنج الصحيح
+            _open_resin = st.session_state.get(f'resin_type_{oid}', _RESIN_OPTIONS[0])
+            MAT_MAP_KEYS = _build_mat_map(_open_resin)
 
             st.info(f"🟡 الوردية #{sid} مفتوحة | الطلبية: **{oid}** | مخطط: **{planned}** خزان | مشرف: **{supervisor}**")
 
@@ -2260,6 +2287,9 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
             extra_items    = st.session_state.get('_extra_items', {})
             actual_qty_done= st.session_state.get('_actual_qty_done', planned)
             row            = odf[odf['order_id']==oid].iloc[0] if oid in odf['order_id'].values else odf.iloc[0]
+            # تحديث MAT_MAP_KEYS بنوع الراتنج الصحيح من session_state
+            _closing_resin = st.session_state.get(f'resin_type_{oid}', _RESIN_OPTIONS[0])
+            MAT_MAP_KEYS   = _build_mat_map(_closing_resin)
 
             st.success(f"✅ تم إغلاق الوردية #{sid} بنجاح — {actual_qty_done} خزان")
 
