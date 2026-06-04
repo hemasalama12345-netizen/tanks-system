@@ -910,7 +910,7 @@ if menu == "📊 لوحة التحكم":
         FROM production_days pd
         JOIN orders o ON pd.order_id = o.order_id
         WHERE pd.status = 'مغلق'
-          AND pd.shift_date BETWEEN :s AND :e
+          AND pd.date BETWEEN :s AND :e
     """, {"s": d_start, "e": d_end})
 
     # جلب أسعار المخزون
