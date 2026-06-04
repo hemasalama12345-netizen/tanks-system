@@ -908,9 +908,7 @@ if menu == "📊 لوحة التحكم":
 
     # قيمة المخزون المتبقي (أصول وليس مصروف)
     # ======= قيمة المخزون =======
-    # قيمة المخزون المتبقي (أصول وليس مصروف)
-    # ======= قيمة المخزون =======
-    inv_df = run_query("SELECT material_name, quantity FROM inventory WHERE quantity > 0 ORDER BY material_name")
+    # inv_df = run_query("SELECT material_name, quantity FROM inventory WHERE quantity > 0 ORDER BY material_name")
     inv_value = 0.0
 
     if not inv_df.empty:
@@ -918,23 +916,37 @@ if menu == "📊 لوحة التحكم":
         all_proc = run_query(
             "SELECT material_name, quantity, total_price FROM procurement WHERE quantity > 0")
 
-        # بناء price_map لكل مادة في المخزن بتطابق دقيق وصحيح
+        # بناء price_map لكل مادة في المخزن بتطابق دقيق ونظيف ومجرب
         price_map = {}
         if not all_proc.empty:
+            import re
+            def _clean_text(txt):
+                t = str(txt).strip().lower()
+                t = re.sub(r'^\[.+?\]\s*', '', t)
+                t = re.sub(r'[أإآ]', 'ا', t)
+                t = re.sub(r'ة', 'ه', t)
+                t = re.sub(r'ى', 'ي', t)
+                t = re.sub(r'\s+', ' ', t)
+                return t.strip()
+
             for inv_mat in inv_df['material_name'].tolist():
                 best_price = 0.0
                 total_tp = 0.0
                 total_qty = 0.0
+                clean_inv = _clean_text(inv_mat)
+                
                 for _, pr in all_proc.iterrows():
                     pname = str(pr['material_name'])
                     pqty  = float(pr['quantity'] or 0)
                     ptp   = float(pr['total_price'] or 0)
                     if pqty <= 0: continue
                     
-                    # مطابقة دقيقة وصحيحة لتفادي تداخل المواد والحسابات العشوائية الفلكية
-                    if inv_mat.strip().lower() == pname.strip().lower():
-                        total_tp  += ptp
-                        total_qty += pqty
+                    p_parts = [_clean_text(part) for part in pname.split('/')]
+                    
+                    if clean_inv in p_parts:
+                        n_mats = len(pname.split('/')) if '/' in pname else 1
+                        total_tp  += ptp / n_mats
+                        total_qty += pqty / n_mats
                         
                 if total_qty > 0:
                     best_price = round(total_tp / total_qty, 2)
@@ -943,18 +955,6 @@ if menu == "📊 لوحة التحكم":
         inv_df['متوسط السعر'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['القيمة']      = inv_df['quantity'] * inv_df['متوسط السعر']
         inv_value = float(inv_df['القيمة'].sum())
-    # الحسابات المالية
-    total_costs  = raw_mat_cost + total_sal + total_exp
-    gross_profit = total_sales - raw_mat_vat
-    net_profit   = total_sales - total_costs
-    profit_margin= (net_profit / total_sales * 100) if total_sales > 0 else 0
-
-    # ======= بطاقات الأداء =======
-    st.markdown("### 💰 ملخص الأداء المالي للفترة")
-    r1,r2,r3,r4 = st.columns(4)
-    r1.metric("📈 إجمالي المبيعات",           f"{total_sales:,.2f} ر")
-    r2.metric("🏭 تكلفة المواد (مع الضريبة)", f"{raw_mat_vat:,.2f} ر")
-    r3.metric("👷 الرواتب والمصاريف",          f"{total_sal+total_exp:,.2f} ر")
     r4.metric("💵 صافي الربح / الخسارة",
               f"{net_profit:,.2f} ر",
               delta=f"{'ربح ✅' if net_profit>=0 else 'خسارة ❌'} | {profit_margin:.1f}%",
