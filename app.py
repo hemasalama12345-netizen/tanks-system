@@ -3076,9 +3076,11 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                 cur = float(pr['unit_price'] or 0)
                 pc1,pc2,pc3 = st.columns([3,2,1])
                 pc1.write(f"**{mat}**")
+                import hashlib as _hl
+                _mk = _hl.md5(mat.encode()).hexdigest()[:8]
                 new_p = pc2.number_input("ريال/وحدة", min_value=0.0, value=cur,
-                                          key=f"price_{mat[:15]}", label_visibility="collapsed")
-                if pc3.button("💾", key=f"save_p_{mat[:15]}"):
+                                          key=f"price_{_mk}", label_visibility="collapsed")
+                if pc3.button("💾", key=f"save_p_{_mk}"):
                     run_write("UPDATE inventory_prices SET unit_price=:p WHERE material_name=:m",
                               {"p": float(new_p), "m": mat})
                     st.success(f"✅ تم حفظ سعر {mat}: {new_p:,.2f} ر")
