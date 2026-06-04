@@ -898,13 +898,57 @@ if menu == "📊 لوحة التحكم":
         "SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e",
         {"s":d_start,"e":d_end})['t'].iloc[0])
 
-    # تكلفة المواد الخام المستهلكة فعلياً في الفترة (من أوامر الصرف للإنتاج)
-    # = المشتريات التي دخلت المخزن في الفترة × نسبة ما تم استهلاكه
-    # الأبسط والأدق: تكلفة المشتريات الفعلية في الفترة
-    raw_mat_cost = float(run_query(
-        "SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",
-        {"s":d_start,"e":d_end})['t'].iloc[0])
-    raw_mat_vat  = raw_mat_cost * 1.15  # مع الضريبة
+    # ========== تكلفة المواد المستهلكة فعلياً في التصنيع ==========
+    # المصدر: production_days — المواد التي صُرفت فعلاً للإنتاج في الفترة
+    # وليس المشتريات (المشتريات تذهب للمخزون كأصول)
+
+    # تكلفة المواد من سجلات الإنتاج الفعلي
+    prod_mats = run_query("""
+        SELECT pd.order_id, pd.actual_qty,
+               o.resin_exp, o.mat_exp, o.roving_exp, o.tissue_exp,
+               o.catalyst_exp, o.calcium_exp, o.silica_exp
+        FROM production_days pd
+        JOIN orders o ON pd.order_id = o.order_id
+        WHERE pd.status = 'مغلق'
+          AND pd.shift_date BETWEEN :s AND :e
+    """, {"s": d_start, "e": d_end})
+
+    # جلب أسعار المخزون
+    try:
+        ip_df = run_query("SELECT material_name, unit_price FROM inventory_prices")
+        ip_map = {str(r['material_name']): float(r['unit_price'] or 0) for _,r in ip_df.iterrows()} if not ip_df.empty else {}
+    except Exception:
+        ip_map = {}
+
+    raw_mat_cost = 0.0
+    if not prod_mats.empty:
+        mat_keys = [
+            ("resin_exp",    list(ip_map.keys())),   # نأخذ أي راتنج
+            ("mat_exp",      "ألياف (Mat 450)"),
+            ("roving_exp",   "روفرز (Roving 600)"),
+            ("tissue_exp",   "تيسو (Tissue)"),
+            ("catalyst_exp", "مصلد (Catalyst)"),
+            ("calcium_exp",  "كربونات الكالسيوم"),
+            ("silica_exp",   "سيليكا (Silica)"),
+        ]
+        for _, row in prod_mats.iterrows():
+            qty_made = float(row['actual_qty'] or 0)
+            if qty_made <= 0: continue
+            # راتنج - ابحث عن أي مادة راتنج
+            resin_price = 0.0
+            for k,v in ip_map.items():
+                if 'راتنج' in k or 'ريزن' in k:
+                    resin_price = v; break
+            raw_mat_cost += qty_made * float(row['resin_exp'] or 0) * resin_price
+            raw_mat_cost += qty_made * float(row['mat_exp'] or 0)    * ip_map.get("ألياف (Mat 450)", 0)
+            raw_mat_cost += qty_made * float(row['roving_exp'] or 0) * ip_map.get("روفرز (Roving 600)", 0)
+            raw_mat_cost += qty_made * float(row['tissue_exp'] or 0) * ip_map.get("تيسو (Tissue)", 0)
+            raw_mat_cost += qty_made * float(row['catalyst_exp'] or 0) * ip_map.get("مصلد (Catalyst)", 0)
+            raw_mat_cost += qty_made * float(row['calcium_exp'] or 0) * ip_map.get("كربونات الكالسيوم", 0)
+            raw_mat_cost += qty_made * float(row['silica_exp'] or 0)  * ip_map.get("سيليكا (Silica)", 0)
+
+    raw_mat_cost = round(raw_mat_cost, 2)
+    raw_mat_vat  = raw_mat_cost  # تكلفة الإنتاج بدون ضريبة إضافية
 
     # الرواتب في الفترة
     total_sal = float(run_query(
@@ -944,7 +988,7 @@ if menu == "📊 لوحة التحكم":
     st.markdown("### 💰 ملخص الأداء المالي للفترة")
     r1,r2,r3,r4 = st.columns(4)
     r1.metric("📈 إجمالي المبيعات",           f"{total_sales:,.2f} ر")
-    r2.metric("🏭 تكلفة المواد (مع الضريبة)", f"{raw_mat_vat:,.2f} ر")
+    r2.metric("🏭 تكلفة المواد المستهلكة", f"{raw_mat_vat:,.2f} ر")
     r3.metric("👷 الرواتب والمصاريف",          f"{total_sal+total_exp:,.2f} ر")
     r4.metric("💵 صافي الربح / الخسارة",
               f"{net_profit:,.2f} ر",
