@@ -908,6 +908,8 @@ if menu == "📊 لوحة التحكم":
 
     # قيمة المخزون المتبقي (أصول وليس مصروف)
     # ======= قيمة المخزون =======
+    # قيمة المخزون المتبقي (أصول وليس مصروف)
+    # ======= قيمة المخزون =======
     inv_df = run_query("SELECT material_name, quantity FROM inventory WHERE quantity > 0 ORDER BY material_name")
     inv_value = 0.0
 
@@ -916,7 +918,7 @@ if menu == "📊 لوحة التحكم":
         all_proc = run_query(
             "SELECT material_name, quantity, total_price FROM procurement WHERE quantity > 0")
 
-        # بناء price_map لكل مادة في المخزن
+        # بناء price_map لكل مادة في المخزن بتطابق دقيق وصحيح
         price_map = {}
         if not all_proc.empty:
             for inv_mat in inv_df['material_name'].tolist():
@@ -928,15 +930,12 @@ if menu == "📊 لوحة التحكم":
                     pqty  = float(pr['quantity'] or 0)
                     ptp   = float(pr['total_price'] or 0)
                     if pqty <= 0: continue
-                    # مطابقة: إما exact أو الاسم موجود في السجل
-                    inv_short = inv_mat.split('(')[0].strip()[:6].lower()
-                    if (inv_mat == pname or
-                        inv_mat.lower() in pname.lower() or
-                        (len(inv_short) >= 4 and inv_short in pname.lower())):
-                        # لو سجل مدمج (يحتوي /) نقسم على عدد المواد
-                        n_mats = len(pname.split('/')) if '/' in pname else 1
-                        total_tp  += ptp / n_mats
-                        total_qty += pqty / n_mats
+                    
+                    # مطابقة دقيقة وصحيحة لتفادي تداخل المواد والحسابات العشوائية الفلكية
+                    if inv_mat.strip().lower() == pname.strip().lower():
+                        total_tp  += ptp
+                        total_qty += pqty
+                        
                 if total_qty > 0:
                     best_price = round(total_tp / total_qty, 2)
                 price_map[inv_mat] = best_price
@@ -944,7 +943,6 @@ if menu == "📊 لوحة التحكم":
         inv_df['متوسط السعر'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['القيمة']      = inv_df['quantity'] * inv_df['متوسط السعر']
         inv_value = float(inv_df['القيمة'].sum())
-
     # الحسابات المالية
     total_costs  = raw_mat_cost + total_sal + total_exp
     gross_profit = total_sales - raw_mat_vat
