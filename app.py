@@ -245,19 +245,30 @@ except Exception:
     pass
 
 def ensure_workers_columns():
-    """يضيف أعمدة base_salary و job_title لجدول workers إذا لم تكن موجودة"""
-    try:
-        run_write("ALTER TABLE workers ADD COLUMN IF NOT EXISTS base_salary FLOAT DEFAULT 0")
-    except Exception: pass
-    try:
-        run_write("ALTER TABLE workers ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT ''")
-    except Exception: pass
-    try:
-        run_write("ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''")
-    except Exception: pass
-    try:
-        run_write("ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS created_at DATE DEFAULT CURRENT_DATE")
-    except Exception: pass
+    """يضيف أعمدة إضافية لجداول العمال"""
+    for sql in [
+        "ALTER TABLE workers ADD COLUMN IF NOT EXISTS base_salary FLOAT DEFAULT 0",
+        "ALTER TABLE workers ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT ''",
+        "ALTER TABLE workers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
+        "ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
+        "ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS created_at DATE DEFAULT CURRENT_DATE",
+        """CREATE TABLE IF NOT EXISTS worker_attendance(
+            id SERIAL PRIMARY KEY,
+            worker_id INTEGER REFERENCES workers(id),
+            att_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            status TEXT DEFAULT 'حاضر',
+            notes TEXT DEFAULT '',
+            UNIQUE(worker_id, att_date))""",
+        """CREATE TABLE IF NOT EXISTS worker_deductions(
+            id SERIAL PRIMARY KEY,
+            worker_id INTEGER REFERENCES workers(id),
+            amount FLOAT NOT NULL,
+            reason TEXT DEFAULT '',
+            deduction_date DATE DEFAULT CURRENT_DATE)""",
+    ]:
+        try:
+            run_write(sql)
+        except Exception: pass
 
 try:
     ensure_workers_columns()
@@ -896,16 +907,19 @@ if menu == "📊 لوحة التحكم":
         {"s":d_start,"e":d_end})['t'].iloc[0])
 
     # قيمة المخزون المتبقي (أصول وليس مصروف)
-    inv_df = run_query("""
-        SELECT i.material_name, i.quantity,
-               COALESCE(
-                 (SELECT AVG(p.unit_price) FROM procurement p
-                  WHERE p.material_name=i.material_name),
-                 0) as avg_price
-        FROM inventory i ORDER BY i.material_name""")
+    inv_df = run_query("SELECT material_name, quantity FROM inventory ORDER BY material_name")
     inv_value = 0.0
     if not inv_df.empty:
-        inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['avg_price']
+        # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
+        proc_prices = run_query("""
+            SELECT material_name, AVG(unit_price) as avg_price
+            FROM procurement
+            GROUP BY material_name""")
+        price_map = {}
+        if not proc_prices.empty:
+            price_map = {r['material_name']: float(r['avg_price']) for _,r in proc_prices.iterrows()}
+        inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
+        inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
 
     # الحسابات
@@ -930,47 +944,31 @@ if menu == "📊 لوحة التحكم":
 
     # ======= جدول قائمة الدخل =======
     st.markdown("### 📊 قائمة الدخل التفصيلية")
-    # قائمة الدخل كـ HTML مباشرة — أوضح وأجمل
-    def _row(label, val, bold=False, color=""):
-        style = f"font-weight:700;" if bold else ""
-        if color: style += f"color:{color};"
-        return f"""<tr>
-          <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;{style}">{label}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;font-size:14px;{style}">{val:,.2f} ر</td>
-        </tr>"""
-
-    income_html = f"""<table style="width:100%;border-collapse:collapse;font-family:'Cairo',sans-serif;font-size:13px;direction:rtl;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.08)">
-<thead><tr style="background:#1E3A8A;color:#fff">
-  <th style="padding:12px 14px;text-align:right">البيان</th>
-  <th style="padding:12px 14px;text-align:left">المبلغ (ريال)</th>
-</tr></thead>
-<tbody>
-{_row("➕ إيرادات المبيعات (مع الضريبة)", total_sales)}
-{_row("➖ تكلفة المواد الخام (مع الضريبة)", raw_mat_vat)}
-<tr style="background:#eff6ff"><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1E3A8A">═══ مجمل الربح</td>
-<td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;font-size:14px;font-weight:700;color:#1E3A8A">{gross_profit:,.2f} ر</td></tr>
-{_row("➖ الرواتب وتكاليف العمالة", total_sal)}
-{_row("➖ المصاريف التشغيلية", total_exp)}
-{_row("═══ إجمالي التكاليف والمصاريف", total_costs, bold=True)}
-<tr style="background:{'#f0fdf4' if net_profit>=0 else '#fef2f2'}">
-  <td style="padding:12px 14px;font-weight:800;font-size:15px;color:{'#16a34a' if net_profit>=0 else '#dc2626'}">{'💵 صافي الربح' if net_profit>=0 else '🔴 صافي الخسارة'}</td>
-  <td style="padding:12px 14px;text-align:left;font-family:monospace;font-size:16px;font-weight:800;color:{'#16a34a' if net_profit>=0 else '#dc2626'}">{net_profit:,.2f} ر</td>
-</tr>
-</tbody></table>"""
-    st.markdown(income_html, unsafe_allow_html=True)
+    income_df = pd.DataFrame([
+        {"البيان": "➕ إيرادات المبيعات (مع الضريبة)",          "المبلغ (ريال)": round(total_sales,2)},
+        {"البيان": "➖ تكلفة المواد الخام (مع الضريبة)",         "المبلغ (ريال)": round(raw_mat_vat,2)},
+        {"البيان": "══ مجمل الربح",                              "المبلغ (ريال)": round(gross_profit,2)},
+        {"البيان": "➖ الرواتب وتكاليف العمالة",                 "المبلغ (ريال)": round(total_sal,2)},
+        {"البيان": "➖ المصاريف التشغيلية",                       "المبلغ (ريال)": round(total_exp,2)},
+        {"البيان": "══ إجمالي التكاليف والمصاريف",              "المبلغ (ريال)": round(total_costs,2)},
+        {"البيان": "💵 صافي الربح / الخسارة",                   "المبلغ (ريال)": round(net_profit,2)},
+    ])
+    st.dataframe(income_df, use_container_width=True, hide_index=True,
+                 column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
 
     st.markdown("---")
 
     # ======= جدول المخزون كأصول =======
     st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
     if not inv_df.empty:
-        inv_display = inv_df[['material_name','quantity','avg_price','قيمة المخزون']].copy()
-        inv_display.columns = ['المادة الخام','الكمية المتوفرة','متوسط سعر الوحدة','القيمة الإجمالية (ريال)']
-        inv_display['الكمية المتوفرة'] = inv_display['الكمية المتوفرة'].apply(lambda x: f"{float(x):,.2f}")
-        inv_display['متوسط سعر الوحدة'] = inv_display['متوسط سعر الوحدة'].apply(lambda x: f"{float(x):,.2f}")
-        inv_display['القيمة الإجمالية (ريال)'] = inv_display['القيمة الإجمالية (ريال)'].apply(lambda x: f"{float(x):,.2f}")
-        st.dataframe(inv_display, use_container_width=True, hide_index=True)
-        # إجمالي قيمة المخزون
+        inv_display = inv_df[['material_name','quantity','متوسط سعر الوحدة','قيمة المخزون']].copy()
+        inv_display.columns = ['المادة الخام','الكمية','متوسط السعر','القيمة (ريال)']
+        st.dataframe(inv_display, use_container_width=True, hide_index=True,
+                     column_config={
+                         "الكمية":       st.column_config.NumberColumn(format="%.2f"),
+                         "متوسط السعر":  st.column_config.NumberColumn(format="%.2f ر"),
+                         "القيمة (ريال)":st.column_config.NumberColumn(format="%.2f ر"),
+                     })
         st.success(f"📦 **إجمالي قيمة المخزون كأصول: {inv_value:,.2f} ريال**")
     else:
         st.info("المخزن فارغ")
@@ -999,31 +997,8 @@ if menu == "📊 لوحة التحكم":
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
     if not adf.empty:
-        # عرض كـ HTML لضمان ظهور كل البيانات
-        rows_html = ""
-        for _,r in adf.iterrows():
-            rows_html += f"""<tr>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#1E3A8A;font-weight:700;">{r['الطلبية']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">{r['العميل']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{r['الاستخدام']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{r['السعة']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(r['الكمية'])}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:700;">{float(r['القيمة']):,.0f} ر</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">
-                <span style="background:#d97706;color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;">{r['الحالة']}</span>
-              </td>
-            </tr>"""
-        st.markdown(f"""<table style="width:100%;border-collapse:collapse;font-family:'Cairo',sans-serif;font-size:13px;direction:rtl;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.08)">
-<thead><tr style="background:#1E3A8A;color:#fff">
-  <th style="padding:10px 12px;text-align:right">رقم الطلبية</th>
-  <th style="padding:10px 12px;text-align:right">العميل</th>
-  <th style="padding:10px 12px;text-align:center">الاستخدام</th>
-  <th style="padding:10px 12px;text-align:center">السعة</th>
-  <th style="padding:10px 12px;text-align:center">الكمية</th>
-  <th style="padding:10px 12px;text-align:center">القيمة</th>
-  <th style="padding:10px 12px;text-align:center">الحالة</th>
-</tr></thead>
-<tbody>{rows_html}</tbody></table>""", unsafe_allow_html=True)
+        st.dataframe(adf, use_container_width=True, hide_index=True,
+                     column_config={"القيمة": st.column_config.NumberColumn(format="%.0f ر")})
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
 
@@ -3916,7 +3891,7 @@ elif menu == "👷 العمال والأجور":
                   ('sal_rcpt',None),('sal_ready',False)]:
         if _k not in st.session_state: st.session_state[_k]=_v
 
-    tabs = st.tabs(["👤 إضافة عامل","💵 سلفة","💰 الرواتب","📋 سجل العمال"])
+    tabs = st.tabs(["👤 إضافة عامل","✏️ تعديل/حذف","💵 سلفة","💸 خصم","📅 حضور وانصراف","💰 الرواتب","📋 سجل العمال"])
 
     # ===== تبويب 1: إضافة عامل =====
     with tabs[0]:
@@ -3949,8 +3924,8 @@ elif menu == "👷 العمال والأجور":
             st.dataframe(wlist.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','start_date':'تاريخ الالتحاق'}),
                          use_container_width=True, hide_index=True)
 
-    # ===== تبويب 2: سلفة =====
-    with tabs[1]:
+    # ===== تبويب 3: سلفة =====
+    with tabs[2]:
         st.markdown("#### اعتماد سلفة")
         ak = st.session_state.ak
         wdf = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
@@ -4063,8 +4038,8 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.session_state.adv_rcpt  = None
                     st.rerun()
 
-    # ===== تبويب 3: الرواتب =====
-    with tabs[2]:
+    # ===== تبويب 6: الرواتب =====
+    with tabs[5]:
         st.markdown("#### مسير الرواتب")
         slk = st.session_state.slk
         wdf2 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
@@ -4185,8 +4160,136 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.session_state.sal_rcpt  = None
                     st.rerun()
 
-    # ===== تبويب 4: سجل العمال =====
+    # ===== تبويب 2: تعديل / حذف عامل =====
+    with tabs[1]:
+        st.markdown("#### تعديل أو حذف عامل")
+        wdf_e = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'') as job_title,COALESCE(phone,'') as phone FROM workers ORDER BY name")
+        if wdf_e.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            sel_e = st.selectbox("اختر العامل:", wdf_e['name'].tolist(), key="edit_sel")
+            er = wdf_e[wdf_e['name']==sel_e].iloc[0]
+            eid = int(er['id'])
+            ec1,ec2 = st.columns(2)
+            new_name  = ec1.text_input("الاسم:", value=str(er['name']), key="e_name")
+            new_iqama = ec2.text_input("رقم الإقامة:", value=str(er['iqama_id']), key="e_iqama")
+            ec3,ec4 = st.columns(2)
+            new_sal   = ec3.number_input("الراتب الأساسي:", min_value=0.0, value=float(er['base_salary']), key="e_sal")
+            new_job   = ec4.text_input("المسمى الوظيفي:", value=str(er['job_title']), key="e_job")
+            new_phone = st.text_input("رقم الجوال:", value=str(er['phone']), key="e_phone")
+            col_upd, col_del = st.columns(2)
+            if col_upd.button("💾 حفظ التعديلات", type="primary"):
+                run_write("UPDATE workers SET name=:n,iqama_id=:i,base_salary=:b,job_title=:j,phone=:p WHERE id=:id",
+                          {"n":new_name,"i":new_iqama,"b":float(new_sal),"j":new_job,"p":new_phone,"id":eid})
+                st.success(f"✅ تم تعديل بيانات [{new_name}]!")
+                st.rerun()
+            if 'confirm_del_w' not in st.session_state: st.session_state.confirm_del_w = False
+            if col_del.button("🗑️ حذف العامل", type="secondary"):
+                st.session_state.confirm_del_w = True
+            if st.session_state.confirm_del_w:
+                st.error(f"⚠️ هل أنت متأكد من حذف [{sel_e}] وكل بياناته؟")
+                cy,cn = st.columns(2)
+                if cy.button("✅ نعم احذف", key="del_yes_w"):
+                    run_write("DELETE FROM worker_attendance WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_deductions WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_advances WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_salaries WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM workers WHERE id=:id",{"id":eid})
+                    st.success(f"✅ تم حذف [{sel_e}]!")
+                    st.session_state.confirm_del_w = False
+                    st.rerun()
+                if cn.button("❌ إلغاء", key="del_no_w"):
+                    st.session_state.confirm_del_w = False
+                    st.rerun()
+
+    # ===== تبويب 4: خصم =====
     with tabs[3]:
+        st.markdown("#### تسجيل خصم على عامل")
+        if 'ddk' not in st.session_state: st.session_state.ddk = 0
+        ddk = st.session_state.ddk
+        wdf_d = run_query("SELECT id,name,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        if wdf_d.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            sel_d = st.selectbox("العامل:", wdf_d['name'].tolist(), key=f"ded_sel_{ddk}")
+            did_d = int(wdf_d[wdf_d['name']==sel_d]['id'].iloc[0])
+            base_d = float(wdf_d[wdf_d['name']==sel_d]['base_salary'].iloc[0])
+            ded_reason = st.selectbox("سبب الخصم:", ["غياب","تأخير","كسر/تلف","مخالفة","أخرى"], key=f"ded_reason_{ddk}")
+            ded_amt = st.number_input("مبلغ الخصم (ريال):", min_value=0.01, value=0.0, key=f"ded_amt_{ddk}")
+            ded_note = st.text_input("ملاحظة:", key=f"ded_note_{ddk}")
+            if st.button("💸 تسجيل الخصم", type="primary", key=f"ded_btn_{ddk}"):
+                run_write("INSERT INTO worker_deductions(worker_id,amount,reason,deduction_date) VALUES(:w,:a,:r,CURRENT_DATE)",
+                          {"w":did_d,"a":float(ded_amt),"r":f"{ded_reason} - {ded_note}"})
+                st.success(f"✅ تم تسجيل خصم {ded_amt:,.2f} ريال على [{sel_d}]!")
+                st.session_state.ddk += 1
+                st.rerun()
+            # عرض الخصومات
+            deds = run_query("SELECT deduction_date,amount,reason FROM worker_deductions WHERE worker_id=:w ORDER BY deduction_date DESC",{"w":did_d})
+            if not deds.empty:
+                st.markdown("##### الخصومات المسجلة:")
+                st.dataframe(deds.rename(columns={'deduction_date':'التاريخ','amount':'المبلغ','reason':'السبب'}),
+                             use_container_width=True, hide_index=True)
+                st.info(f"إجمالي الخصومات: {float(deds['amount'].sum()):,.2f} ريال")
+
+    # ===== تبويب 5: حضور وانصراف =====
+    with tabs[4]:
+        st.markdown("#### تسجيل الحضور والانصراف")
+        wdf_att = run_query("SELECT id,name FROM workers ORDER BY name")
+        if wdf_att.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            att_date = st.date_input("تاريخ الحضور:", datetime.date.today(), key="att_date")
+            st.markdown(f"**تسجيل حضور يوم: {att_date}**")
+
+            # عرض حالة كل عامل لهذا اليوم
+            for _,wr in wdf_att.iterrows():
+                wid_a = int(wr['id'])
+                existing = run_query(
+                    "SELECT status FROM worker_attendance WHERE worker_id=:w AND att_date=:d",
+                    {"w":wid_a,"d":att_date})
+                cur_status = existing['status'].iloc[0] if not existing.empty else None
+                col_n,col_s,col_btn = st.columns([3,2,1])
+                col_n.write(f"👤 {wr['name']}")
+                status_opts = ["حاضر","غائب","إجازة","مأمورية"]
+                default_idx = status_opts.index(cur_status) if cur_status in status_opts else 0
+                new_status = col_s.selectbox("", status_opts,
+                                              index=default_idx,
+                                              key=f"att_{wid_a}_{att_date}",
+                                              label_visibility="collapsed")
+                if col_btn.button("✅", key=f"att_save_{wid_a}_{att_date}"):
+                    run_write("""INSERT INTO worker_attendance(worker_id,att_date,status)
+                               VALUES(:w,:d,:s) ON CONFLICT(worker_id,att_date)
+                               DO UPDATE SET status=EXCLUDED.status""",
+                              {"w":wid_a,"d":att_date,"s":new_status})
+                    st.rerun()
+
+            st.markdown("---")
+            # تقرير الحضور للفترة
+            st.markdown("#### 📊 تقرير الحضور")
+            ra1,ra2 = st.columns(2)
+            att_from = ra1.date_input("من:", datetime.date.today().replace(day=1), key="att_from")
+            att_to   = ra2.date_input("إلى:", datetime.date.today(), key="att_to")
+            att_rep  = run_query("""SELECT w.name,
+                COUNT(CASE WHEN a.status='حاضر' THEN 1 END) as حضور,
+                COUNT(CASE WHEN a.status='غائب' THEN 1 END) as غياب,
+                COUNT(CASE WHEN a.status='إجازة' THEN 1 END) as إجازة,
+                COUNT(CASE WHEN a.status='مأمورية' THEN 1 END) as مأمورية,
+                COUNT(a.id) as إجمالي_مسجل
+                FROM workers w
+                LEFT JOIN worker_attendance a ON a.worker_id=w.id
+                    AND a.att_date BETWEEN :s AND :e
+                GROUP BY w.id,w.name ORDER BY w.name""",
+                {"s":att_from,"e":att_to})
+            if not att_rep.empty:
+                st.dataframe(att_rep, use_container_width=True, hide_index=True)
+            else:
+                st.info("لا توجد بيانات حضور.")
+
+    # ===== تبويب 6 (الرواتب) = تبويب 3 القديم =====
+    # تبويب 7 (سجل العمال) = تبويب 4 القديم
+
+    # ===== تبويب 7: سجل العمال =====
+    with tabs[6]:
         st.markdown("#### سجل العمال والمدفوعات")
         wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
         if wdf4.empty:
