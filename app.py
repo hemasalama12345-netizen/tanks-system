@@ -20,7 +20,8 @@ except ImportError:
     pass
 
 def make_qr_b64(text, color=(0,0,0), module_size=10, quiet=4):
-    """توليد QR Code — يستخدم qrcode library إذا متوفرة"""
+    """توليد QR Code — qrcode library أولاً ثم API"""
+    # 1. qrcode library (Streamlit Cloud بعد install)
     if _QRCODE_LIB is not None:
         try:
             qr = _QRCODE_LIB.QRCode(
@@ -29,17 +30,18 @@ def make_qr_b64(text, color=(0,0,0), module_size=10, quiet=4):
                 box_size=module_size,
                 border=quiet,
             )
-            qr.add_data(text)
+            qr.add_data(text.encode('utf-8') if isinstance(text, str) else text)
             qr.make(fit=True)
-            # لون الـ QR
-            r,g,b = color if isinstance(color,tuple) else (0,0,0)
-            img = qr.make_image(fill_color=(r,g,b), back_color=(255,255,255))
+            r2,g2,b2 = color if isinstance(color,tuple) else (0,0,0)
+            img = qr.make_image(fill_color=(r2,g2,b2), back_color=(255,255,255))
             buf = _io.BytesIO()
             img.save(buf, format='PNG')
-            return _b64.b64encode(buf.getvalue()).decode()
+            result = _b64.b64encode(buf.getvalue()).decode()
+            if len(result) > 500:  # QR حقيقي
+                return result
         except Exception:
             pass
-    # fallback إذا المكتبة غير متوفرة
+    # 2. API fallback
     return _make_qr_fallback(text, color, module_size, quiet)
 
 def _make_qr_fallback(text, color=(0,0,0), module_size=10, quiet=4):
