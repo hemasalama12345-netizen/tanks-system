@@ -966,6 +966,12 @@ if menu == "📊 لوحة التحكم":
     st.markdown("---")
 
     # ======= جدول المخزون كأصول =======
+    # DEBUG: عرض ما في procurement لفهم المشكلة
+    _debug_proc = run_query("SELECT material_name, quantity, unit_price, total_price FROM procurement LIMIT 10")
+    if not _debug_proc.empty:
+        with st.expander("🔍 DEBUG: بيانات procurement (مؤقت)", expanded=False):
+            st.dataframe(_debug_proc, use_container_width=True)
+
     st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
     if not inv_df.empty:
         inv_display = inv_df[['material_name','quantity','متوسط سعر الوحدة','قيمة المخزون']].copy()
