@@ -292,9 +292,25 @@ def make_tank_label_html(sn, order_id, customer_name, tank_use,
                          tank_capacity, tank_type, delivery_date,
                          factory_name, factory_address, seq, total):
     """صفحة HTML مستقلة لكل خزان — تحتوي QR + كل البيانات"""
-    qr_text = (f"SN:{sn}|ORDER:{order_id}|CLIENT:{customer_name}"
-               f"|TYPE:{tank_use}|CAP:{tank_capacity}|MFG:{factory_name}"
-               f"|DATE:{delivery_date}|SEQ:{seq}OF{total}")
+    # QR: إنجليزي بحت فقط — يضمن القراءة بأي scanner
+    def _ascii_only(s):
+        """يحتفظ بالأحرف الإنجليزية والأرقام والرموز الأساسية فقط"""
+        return ''.join(c for c in str(s) if c.isascii() and c.isprintable()).strip()
+
+    # ترجمة نوع الاستخدام
+    _use_map = {'ماء':'Water','صرف':'Sewage','ديزل':'Diesel','حريق':'Fire'}
+    _use_en = _use_map.get(str(tank_use), _ascii_only(tank_use) or 'Tank')
+
+    qr_text = (
+        f"SN:{_ascii_only(sn)} "
+        f"ORDER:{_ascii_only(order_id)} "
+        f"CLIENT:{_ascii_only(customer_name)} "
+        f"CAP:{_ascii_only(tank_capacity)} "
+        f"USE:{_use_en} "
+        f"DATE:{_ascii_only(delivery_date)} "
+        f"SEQ:{seq}OF{total} "
+        f"MFG:Subul-Alriyadah"
+    )
     qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=10)
     return f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
