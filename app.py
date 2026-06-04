@@ -3085,15 +3085,19 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                               {"p": float(new_p), "m": mat})
                     st.success(f"✅ تم حفظ سعر {mat}: {new_p:,.2f} ر")
                     st.rerun()
-        # زر حفظ الكل
+        # زر حفظ الكل - يحفظ القيم الحالية في حقول الإدخال
         st.markdown("---")
         if st.button("💾 حفظ جميع الأسعار دفعة واحدة", type="primary"):
+            import hashlib as _hl2
+            saved_count = 0
             for _, pr in prices_df.iterrows():
                 mat = str(pr['material_name'])
-                new_p_all = st.session_state.get(f"price_{mat[:15]}", float(pr['unit_price'] or 0))
+                _mk2 = _hl2.md5(mat.encode()).hexdigest()[:8]
+                new_p_all = st.session_state.get(f"price_{_mk2}", float(pr['unit_price'] or 0))
                 run_write("UPDATE inventory_prices SET unit_price=:p WHERE material_name=:m",
                           {"p": float(new_p_all), "m": mat})
-            st.success("✅ تم حفظ جميع الأسعار!")
+                saved_count += 1
+            st.success(f"✅ تم حفظ {saved_count} سعر في قاعدة البيانات!")
             st.rerun()
 
     with tabs[7]:
