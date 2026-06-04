@@ -242,7 +242,27 @@ def ensure_inventory_rows():
 try:
     ensure_inventory_rows()
 except Exception:
-    pass  # تجاهل لو الجدول غير موجود بعد
+    pass
+
+def ensure_workers_columns():
+    """يضيف أعمدة base_salary و job_title لجدول workers إذا لم تكن موجودة"""
+    try:
+        run_write("ALTER TABLE workers ADD COLUMN IF NOT EXISTS base_salary FLOAT DEFAULT 0")
+    except Exception: pass
+    try:
+        run_write("ALTER TABLE workers ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT ''")
+    except Exception: pass
+    try:
+        run_write("ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''")
+    except Exception: pass
+    try:
+        run_write("ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS created_at DATE DEFAULT CURRENT_DATE")
+    except Exception: pass
+
+try:
+    ensure_workers_columns()
+except Exception:
+    pass
 
 def generate_invoice_number(delivery_id):
     """
@@ -845,28 +865,124 @@ menu = st.sidebar.radio("انتقل إلى:", [
 # [1] لوحة التحكم
 # ==========================================
 if menu == "📊 لوحة التحكم":
-    st.subheader("📈 لوحة التحكم")
+    st.subheader("📈 لوحة التحكم — التقرير المالي")
     c1,c2 = st.columns(2)
     d_start = c1.date_input("من:", datetime.date.today()-datetime.timedelta(days=30))
-    d_end = c2.date_input("إلى:", datetime.date.today())
+    d_end   = c2.date_input("إلى:", datetime.date.today())
     st.markdown("---")
-    total_sales = float(run_query("SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e",{"s":d_start,"e":d_end})['t'].iloc[0])
-    total_proc = float(run_query("SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",{"s":d_start,"e":d_end})['t'].iloc[0])
-    total_sal = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":d_start,"e":d_end})['t'].iloc[0])
-    total_exp = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":d_start,"e":d_end})['t'].iloc[0])
-    net_profit = total_sales - (total_proc+total_sal+total_exp)
-    m1,m2,m3,m4 = st.columns(4)
-    m1.metric("إجمالي المبيعات", f"{total_sales:,.2f} ر")
-    m2.metric("إجمالي المشتريات", f"{total_proc:,.2f} ر")
-    m3.metric("الرواتب والمصاريف", f"{total_sal+total_exp:,.2f} ر")
-    m4.metric("صافي الربح", f"{net_profit:,.2f} ر", delta="ربح ✅" if net_profit>=0 else "خسارة ❌")
+
+    # ======= جلب البيانات =======
+    # المبيعات: إجمالي الفواتير (مع الضريبة) في الفترة
+    total_sales = float(run_query(
+        "SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e",
+        {"s":d_start,"e":d_end})['t'].iloc[0])
+
+    # تكلفة المواد الخام المستهلكة فعلياً في الفترة (من أوامر الصرف للإنتاج)
+    # = المشتريات التي دخلت المخزن في الفترة × نسبة ما تم استهلاكه
+    # الأبسط والأدق: تكلفة المشتريات الفعلية في الفترة
+    raw_mat_cost = float(run_query(
+        "SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",
+        {"s":d_start,"e":d_end})['t'].iloc[0])
+    raw_mat_vat  = raw_mat_cost * 1.15  # مع الضريبة
+
+    # الرواتب في الفترة
+    total_sal = float(run_query(
+        "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",
+        {"s":d_start,"e":d_end})['t'].iloc[0])
+
+    # المصاريف التشغيلية
+    total_exp = float(run_query(
+        "SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",
+        {"s":d_start,"e":d_end})['t'].iloc[0])
+
+    # قيمة المخزون المتبقي (أصول وليس مصروف)
+    inv_df = run_query("""
+        SELECT i.material_name, i.quantity,
+               COALESCE(
+                 (SELECT AVG(p.unit_price) FROM procurement p
+                  WHERE p.material_name=i.material_name
+                  ORDER BY p.date DESC LIMIT 5),
+                 0) as avg_price
+        FROM inventory i ORDER BY i.material_name""")
+    inv_value = 0.0
+    if not inv_df.empty:
+        inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['avg_price']
+        inv_value = float(inv_df['قيمة المخزون'].sum())
+
+    # الحسابات
+    total_costs   = raw_mat_cost + total_sal + total_exp  # تكاليف الفترة (بدون ضريبة المواد)
+    gross_profit  = total_sales - raw_mat_vat              # مجمل الربح
+    net_profit    = total_sales - total_costs              # صافي الربح
+    profit_margin = (net_profit / total_sales * 100) if total_sales > 0 else 0
+
+    # ======= عرض البطاقات الرئيسية =======
+    st.markdown("### 💰 ملخص الأداء المالي للفترة")
+    r1c1,r1c2,r1c3,r1c4 = st.columns(4)
+    r1c1.metric("📈 إجمالي المبيعات", f"{total_sales:,.2f} ر")
+    r1c2.metric("🏭 تكلفة المواد الخام (مع الضريبة)", f"{raw_mat_vat:,.2f} ر")
+    r1c3.metric("👷 الرواتب والمصاريف", f"{total_sal+total_exp:,.2f} ر")
+    color = "normal" if net_profit >= 0 else "inverse"
+    r1c4.metric("💵 صافي الربح / الخسارة",
+                f"{net_profit:,.2f} ر",
+                delta=f"{'ربح ✅' if net_profit>=0 else 'خسارة ❌'} | هامش {profit_margin:.1f}%",
+                delta_color=color)
+
     st.markdown("---")
+
+    # ======= جدول قائمة الدخل =======
+    st.markdown("### 📊 قائمة الدخل التفصيلية")
+    income_data = [
+        {"البيان": "➕ إيرادات المبيعات (مع الضريبة)",      "المبلغ (ريال)": f"{total_sales:,.2f}",    "نوع": "إيراد"},
+        {"البيان": "➖ تكلفة المواد الخام المشتراة (مع الضريبة)", "المبلغ (ريال)": f"{raw_mat_vat:,.2f}","نوع": "تكلفة"},
+        {"البيان": "═══ مجمل الربح",                        "المبلغ (ريال)": f"{gross_profit:,.2f}",   "نوع": "نتيجة"},
+        {"البيان": "➖ الرواتب وتكاليف العمالة",             "المبلغ (ريال)": f"{total_sal:,.2f}",      "نوع": "مصروف"},
+        {"البيان": "➖ المصاريف التشغيلية",                  "المبلغ (ريال)": f"{total_exp:,.2f}",      "نوع": "مصروف"},
+        {"البيان": "═══ إجمالي التكاليف والمصاريف",         "المبلغ (ريال)": f"{total_costs:,.2f}",    "نوع": "إجمالي"},
+        {"البيان": "💵 صافي الربح / الخسارة",               "المبلغ (ريال)": f"{net_profit:,.2f}",     "نوع": "صافي"},
+    ]
+    st.dataframe(pd.DataFrame(income_data), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # ======= جدول المخزون كأصول =======
+    st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
+    if not inv_df.empty:
+        inv_display = inv_df[['material_name','quantity','avg_price','قيمة المخزون']].copy()
+        inv_display.columns = ['المادة الخام','الكمية المتوفرة','متوسط سعر الوحدة','القيمة الإجمالية (ريال)']
+        inv_display['الكمية المتوفرة'] = inv_display['الكمية المتوفرة'].apply(lambda x: f"{float(x):,.2f}")
+        inv_display['متوسط سعر الوحدة'] = inv_display['متوسط سعر الوحدة'].apply(lambda x: f"{float(x):,.2f}")
+        inv_display['القيمة الإجمالية (ريال)'] = inv_display['القيمة الإجمالية (ريال)'].apply(lambda x: f"{float(x):,.2f}")
+        st.dataframe(inv_display, use_container_width=True, hide_index=True)
+        # إجمالي قيمة المخزون
+        st.success(f"📦 **إجمالي قيمة المخزون كأصول: {inv_value:,.2f} ريال**")
+    else:
+        st.info("المخزن فارغ")
+
+    st.markdown("---")
+
+    # ======= الطلبيات النشطة =======
     st.write("### 📦 الطلبيات النشطة")
-    adf = run_query("SELECT o.order_id as الطلبية,c.trade_name as العميل,o.qty as الكمية,o.total_price as القيمة,o.status as الحالة FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
-    st.dataframe(adf if not adf.empty else pd.DataFrame({"الحالة":["لا توجد طلبيات"]}),use_container_width=True)
-    st.write("### 🏪 المخزن")
-    inv = run_query("SELECT material_name as المادة,quantity as الكمية FROM inventory ORDER BY material_name")
-    st.dataframe(inv if not inv.empty else pd.DataFrame(),use_container_width=True)
+    # تحديث حالة الطلبيات تلقائياً: لو تم تسليم كل الخزانات → مكتملة
+    try:
+        run_write("""
+            UPDATE orders SET status='مكتملة'
+            WHERE status='قيد التنفيذ'
+            AND qty <= (
+                SELECT COALESCE(SUM(shipped_qty),0)
+                FROM delivery_orders
+                WHERE delivery_orders.order_id = orders.order_id)
+        """)
+    except Exception: pass
+
+    adf = run_query("""SELECT o.order_id as الطلبية, c.trade_name as العميل,
+        o.qty as الكمية, o.total_price as القيمة, o.status as الحالة,
+        o.tank_use as الاستخدام,
+        COALESCE(o.tank_capacity,'—') as السعة
+        FROM orders o JOIN customers c ON o.customer_id=c.id
+        WHERE o.status='قيد التنفيذ'
+        ORDER BY o.order_date DESC""")
+    st.dataframe(adf if not adf.empty else pd.DataFrame({"الحالة":["لا توجد طلبيات"]}),
+                 use_container_width=True, hide_index=True)
 
 # ==========================================
 # [2] الطلبيات
@@ -3749,49 +3865,305 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-ali
 # [6] العمال والأجور
 # ==========================================
 elif menu == "👷 العمال والأجور":
-    st.subheader("👷 العمال والأجور")
-    tabs = st.tabs(["👤 إضافة عامل","💵 سلفة","💰 مسير الراتب","🔍 استعلام"])
+    st.subheader("👷 نظام الأجور والرواتب")
+
+    # session state
+    for _k,_v in [('ak',0),('slk',0),('wk',0),
+                  ('adv_rcpt',None),('adv_ready',False),
+                  ('sal_rcpt',None),('sal_ready',False)]:
+        if _k not in st.session_state: st.session_state[_k]=_v
+
+    tabs = st.tabs(["👤 إضافة عامل","💵 سلفة","💰 الرواتب","📋 سجل العمال"])
+
+    # ===== تبويب 1: إضافة عامل =====
     with tabs[0]:
+        st.markdown("#### إضافة عامل جديد")
         with st.form("wf", clear_on_submit=True):
-            wn = st.text_input("الاسم:")
-            wi = st.text_input("رقم الإقامة:")
-            ws = st.date_input("تاريخ الالتحاق:")
-            if st.form_submit_button("✅ حفظ"):
-                if wn and wi:
-                    if run_write("INSERT INTO workers(name,iqama_id,start_date) VALUES(:n,:i,:s) ON CONFLICT(iqama_id) DO NOTHING",{"n":wn,"i":wi,"s":ws}):
-                        st.success(f"✅ [{wn}]!")
+            c1w,c2w = st.columns(2)
+            wn  = c1w.text_input("الاسم الكامل:*")
+            wi  = c2w.text_input("رقم الإقامة:*")
+            c3w,c4w = st.columns(2)
+            ws  = c3w.date_input("تاريخ الالتحاق:")
+            w_sal = c4w.number_input("الراتب الشهري الأساسي (ريال):*", min_value=0.0, value=0.0)
+            w_job = st.text_input("المسمى الوظيفي:")
+            if st.form_submit_button("✅ حفظ العامل"):
+                if wn and wi and w_sal > 0:
+                    ok_w = run_write(
+                        "INSERT INTO workers(name,iqama_id,start_date,base_salary,job_title) VALUES(:n,:i,:s,:b,:j) ON CONFLICT(iqama_id) DO NOTHING",
+                        {"n":wn,"i":wi,"s":ws,"b":float(w_sal),"j":w_job})
+                    if not ok_w:
+                        # fallback بدون base_salary لو العمود غير موجود
+                        run_write("INSERT INTO workers(name,iqama_id,start_date) VALUES(:n,:i,:s) ON CONFLICT(iqama_id) DO NOTHING",
+                                  {"n":wn,"i":wi,"s":ws})
+                    st.success(f"✅ تم إضافة [{wn}] براتب {w_sal:,.2f} ريال!")
+                else:
+                    st.error("أدخل الاسم ورقم الإقامة والراتب!")
+
+        # عرض قائمة العمال الحاليين
+        st.markdown("#### قائمة العمال")
+        wlist = run_query("SELECT name,iqama_id,start_date,COALESCE(base_salary,0) as الراتب,COALESCE(job_title,'—') as الوظيفة FROM workers ORDER BY name")
+        if not wlist.empty:
+            st.dataframe(wlist.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','start_date':'تاريخ الالتحاق'}),
+                         use_container_width=True, hide_index=True)
+
+    # ===== تبويب 2: سلفة =====
     with tabs[1]:
-        if 'ak' not in st.session_state: st.session_state.ak = 0
-        wdf = run_query("SELECT id,name,iqama_id FROM workers ORDER BY name")
-        if not wdf.empty:
-            with st.form(f"af_{st.session_state.ak}", clear_on_submit=True):
-                ws2 = st.selectbox("العامل:", [f"{r['name']} - {r['iqama_id']}" for _,r in wdf.iterrows()])
-                wid = int(wdf[wdf['name']==ws2.split(" - ")[0]]['id'].iloc[0])
-                adv = st.number_input("السلفة:", min_value=0.0, value=1000.0)
-                if st.form_submit_button("💵 اعتماد"):
-                    if run_write("INSERT INTO worker_advances(worker_id,amount) VALUES(:w,:a)",{"w":wid,"a":adv}):
-                        st.success(f"✅ {adv:,.2f} ريال!"); st.session_state.ak+=1; st.rerun()
+        st.markdown("#### اعتماد سلفة")
+        ak = st.session_state.ak
+        wdf = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        if wdf.empty:
+            st.info("أضف عمالاً أولاً.")
+        else:
+            ws2 = st.selectbox("العامل:", [f"{r['name']} ({r['iqama_id']})" for _,r in wdf.iterrows()], key=f"adv_sel_{ak}")
+            wid = int(wdf.iloc[[f"{r['name']} ({r['iqama_id']})" for _,r in wdf.iterrows()].index(ws2)]['id'])
+            wrow = wdf.iloc[[f"{r['name']} ({r['iqama_id']})" for _,r in wdf.iterrows()].index(ws2)]
+            base_sal = float(wrow['base_salary'])
+
+            # حساب المستحق حتى اليوم
+            today = datetime.date.today()
+            days_in_month = 30
+            days_worked = today.day
+            earned_today = round(base_sal / days_in_month * days_worked, 2)
+
+            # السلف المدفوعة هذا الشهر
+            month_str = today.strftime("%Y-%m")
+            adv_this_month = float(run_query(
+                "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
+                {"w":int(wid)})['t'].iloc[0])
+
+            remaining = max(0, earned_today - adv_this_month)
+
+            ca,cb,cc = st.columns(3)
+            ca.metric("الراتب الشهري", f"{base_sal:,.2f} ر")
+            cb.metric(f"المستحق حتى اليوم ({days_worked}/{days_in_month})", f"{earned_today:,.2f} ر")
+            cc.metric("السلف المعلقة", f"{adv_this_month:,.2f} ر")
+
+            if remaining <= 0:
+                st.error(f"⛔ لا يوجد راتب مستحق لهذا العامل الآن — السلف ({adv_this_month:,.2f} ر) تساوي أو تتجاوز المستحق ({earned_today:,.2f} ر)")
+            else:
+                st.success(f"✅ يمكن صرف سلفة بحد أقصى: {remaining:,.2f} ريال")
+                adv_amt = st.number_input("مبلغ السلفة:", min_value=0.01, max_value=float(remaining), value=float(min(remaining, base_sal/4)), key=f"adv_amt_{ak}")
+                adv_note = st.text_input("ملاحظات:", key=f"adv_note_{ak}")
+
+                if st.button("💵 اعتماد السلفة وإصدار الإيصال", type="primary", key=f"adv_btn_{ak}"):
+                    ok_adv = run_write("INSERT INTO worker_advances(worker_id,amount,notes) VALUES(:w,:a,:n)",
+                                       {"w":int(wid),"a":float(adv_amt),"n":str(adv_note)})
+                    if ok_adv:
+                        today_str = today.strftime("%Y/%m/%d")
+                        rcpt_no = f"ADV-{wid}-{today.strftime('%Y%m%d')}-{ak+1}"
+                        _qr_adv = make_qr_b64(f"ADVANCE:{rcpt_no}|WORKER:{wrow['name']}|AMT:{adv_amt:.2f}|DATE:{today_str}", color=(30,58,138), module_size=6)
+
+                        adv_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#d97706;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+.badge-en{{background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid #d97706;direction:ltr;}}
+.qr-img{{width:65px;height:65px;border:2px solid #d97706;border-radius:6px;}}
+.amt-box{{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
+.amt-box .lbl{{font-size:12px;opacity:.85;}} .amt-box .val{{font-size:24px;font-weight:800;}}
+.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
+.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #d97706;}}
+.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
+.bal{{background:#fef3c7;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #fbbf24;}}
+.bal p{{font-size:12px;margin:3px 0;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
+.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
+.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+@media print{{body{{padding:12px;max-width:100%;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no}</b> | {today_str}</p></div>
+  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+    <div class="badge">إيصال سلفة</div><div class="badge-en">Advance Receipt</div>
+    <img class="qr-img" src="data:image/png;base64,{_qr_adv}" alt="QR">
+  </div>
+</div>
+<div class="amt-box"><div><div class="lbl">مبلغ السلفة</div><div style="font-size:10px;opacity:.6">Amount Advanced</div></div><div class="val">{adv_amt:,.2f} ريال</div></div>
+<div class="grid2">
+  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{wrow['name']}</div></div>
+  <div class="ig"><div class="lbl">رقم الإقامة</div><div class="val">{wrow['iqama_id']}</div></div>
+  <div class="ig"><div class="lbl">التاريخ</div><div class="val">{today_str}</div></div>
+  <div class="ig"><div class="lbl">ملاحظات</div><div class="val">{adv_note or '—'}</div></div>
+</div>
+<div class="bal">
+  <p><b>الراتب الشهري:</b> {base_sal:,.2f} ريال</p>
+  <p><b>المستحق حتى اليوم ({days_worked}/{days_in_month}):</b> {earned_today:,.2f} ريال</p>
+  <p><b>هذه السلفة:</b> {adv_amt:,.2f} ريال</p>
+  <p><b>الرصيد المتبقي بعد السلفة:</b> {max(0,remaining-adv_amt):,.2f} ريال</p>
+</div>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div><div class="sig-en">Worker Signature</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str}</span></div>
+</body></html>"""
+                        st.session_state.adv_rcpt  = adv_html
+                        st.session_state.adv_ready = True
+                        st.success(f"✅ سلفة {adv_amt:,.2f} ريال للعامل {wrow['name']}")
+                        st.session_state.ak += 1
+
+            if st.session_state.adv_ready and st.session_state.adv_rcpt:
+                st.download_button("🖨️ طباعة إيصال السلفة (HTML)",
+                    st.session_state.adv_rcpt.encode('utf-8'),
+                    f"Advance_{st.session_state.ak}.html",
+                    "text/html; charset=utf-8", key="dl_adv_rcpt")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
+                if st.button("🆕 سلفة جديدة", key="new_adv"):
+                    st.session_state.adv_ready = False
+                    st.session_state.adv_rcpt  = None
+                    st.rerun()
+
+    # ===== تبويب 3: الرواتب =====
     with tabs[2]:
-        if 'slk' not in st.session_state: st.session_state.slk = 0
-        wdf2 = run_query("SELECT id,name FROM workers ORDER BY name")
-        if not wdf2.empty:
-            with st.form(f"slf_{st.session_state.slk}", clear_on_submit=True):
-                ws3 = st.selectbox("العامل:", wdf2['name'].tolist())
-                wid2 = int(wdf2[wdf2['name']==ws3]['id'].iloc[0])
-                at = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",{"w":wid2})['t'].iloc[0])
-                base = st.number_input("الراتب:", min_value=0.0, value=5000.0)
-                my = st.text_input("الشهر/السنة:", value=datetime.date.today().strftime("%Y-%m"))
-                net_s = base - at
-                st.info(f"الأساسي: {base:,.2f} | السلف: -{at:,.2f} | الصافي: {net_s:,.2f} ريال")
-                if st.form_submit_button("💰 اعتماد"):
-                    if run_write("INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",{"w":wid2,"my":my,"b":base,"a":at,"n":net_s}):
-                        run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'",{"w":wid2})
-                        st.success(f"✅ راتب {ws3}!"); st.session_state.slk+=1; st.rerun()
+        st.markdown("#### مسير الرواتب")
+        slk = st.session_state.slk
+        wdf2 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        if wdf2.empty:
+            st.info("أضف عمالاً أولاً.")
+        else:
+            ws3 = st.selectbox("اختر العامل:", wdf2['name'].tolist(), key=f"sal_sel_{slk}")
+            wid2 = int(wdf2[wdf2['name']==ws3]['id'].iloc[0])
+            wrow3 = wdf2[wdf2['name']==ws3].iloc[0]
+            base3 = float(wrow3['base_salary'])
+
+            today3 = datetime.date.today()
+            days_in_month3 = 30
+            days_worked3   = today3.day
+            earned3        = round(base3 / days_in_month3 * days_worked3, 2)
+
+            # السلف المعلقة
+            adv_total3 = float(run_query(
+                "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
+                {"w":int(wid2)})['t'].iloc[0])
+            net_sal3 = max(0, earned3 - adv_total3)
+
+            # الرواتب المدفوعة مسبقاً هذا الشهر
+            month_str3 = today3.strftime("%Y-%m")
+            paid_this_month = float(run_query(
+                "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
+                {"w":int(wid2),"m":month_str3})['t'].iloc[0])
+
+            # عرض الملخص - راتب غير قابل للتعديل
+            st.markdown(f"""
+<div style="background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:14px;border-right:4px solid #1E3A8A;">
+  <h4 style="color:#1E3A8A;margin-bottom:10px;">💼 ملخص راتب: {ws3}</h4>
+  <p>📌 الراتب الشهري الأساسي: <b>{base3:,.2f} ريال</b></p>
+  <p>📅 أيام العمل حتى اليوم: <b>{days_worked3} يوم من {days_in_month3}</b></p>
+  <p>💰 المستحق حتى اليوم: <b>{earned3:,.2f} ريال</b></p>
+  <p>➖ السلف المعلقة: <b style="color:#dc2626;">{adv_total3:,.2f} ريال</b></p>
+  <p>✅ الصافي المستحق بعد السلف: <b style="color:#16a34a;">{net_sal3:,.2f} ريال</b></p>
+  {"<p style='color:#d97706;'>⚠️ تم دفع "+f'{paid_this_month:,.2f}'+" ريال هذا الشهر مسبقاً</p>" if paid_this_month > 0 else ""}
+</div>""", unsafe_allow_html=True)
+
+            if net_sal3 <= 0.5:
+                st.error("⛔ لا يوجد راتب مستحق لهذا العامل الآن — السلف تعادل أو تتجاوز المستحق.")
+            else:
+                if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
+                    ok_sal = run_write(
+                        "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
+                        {"w":int(wid2),"my":month_str3,"b":float(base3),"a":float(adv_total3),"n":float(net_sal3)})
+                    if ok_sal:
+                        run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'",{"w":int(wid2)})
+                        today_str3 = today3.strftime("%Y/%m/%d")
+                        rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
+                        _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
+
+                        sal_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
+.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#16a34a;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+.badge-en{{background:#f0fdf4;color:#16a34a;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
+.qr-img{{width:65px;height:65px;border:2px solid #16a34a;border-radius:6px;}}
+.amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
+.amt-box .val{{font-size:24px;font-weight:800;}}
+.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
+.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #16a34a;}}
+.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
+.breakdown{{background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #86efac;}}
+.breakdown p{{font-size:12px;margin:3px 0;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
+.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
+.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+@media print{{body{{padding:12px;max-width:100%;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no3}</b> | {today_str3}</p></div>
+  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+    <div class="badge">إيصال راتب</div><div class="badge-en">Salary Receipt</div>
+    <img class="qr-img" src="data:image/png;base64,{_qr_sal}" alt="QR">
+  </div>
+</div>
+<div class="amt-box"><div><div style="font-size:12px;opacity:.85;">صافي الراتب المستحق</div><div style="font-size:10px;opacity:.6">Net Salary</div></div><div class="val">{net_sal3:,.2f} ريال</div></div>
+<div class="grid2">
+  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{ws3}</div></div>
+  <div class="ig"><div class="lbl">رقم الإقامة</div><div class="val">{wrow3['iqama_id']}</div></div>
+  <div class="ig"><div class="lbl">الشهر</div><div class="val">{month_str3}</div></div>
+  <div class="ig"><div class="lbl">تاريخ الصرف</div><div class="val">{today_str3}</div></div>
+</div>
+<div class="breakdown">
+  <p><b>الراتب الأساسي الشهري:</b> {base3:,.2f} ريال</p>
+  <p><b>أيام العمل ({days_worked3}/{days_in_month3}):</b> المستحق = {earned3:,.2f} ريال</p>
+  <p><b>السلف المخصومة:</b> {adv_total3:,.2f} ريال</p>
+  <p style="border-top:1px solid #86efac;padding-top:6px;margin-top:6px;"><b>✅ الصافي المدفوع:</b> {net_sal3:,.2f} ريال</p>
+</div>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div><div class="sig-en">Worker Signature</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str3}</span></div>
+</body></html>"""
+                        st.session_state.sal_rcpt  = sal_html
+                        st.session_state.sal_ready = True
+                        st.success(f"✅ راتب {net_sal3:,.2f} ريال للعامل {ws3}")
+                        st.session_state.slk += 1
+
+            if st.session_state.sal_ready and st.session_state.sal_rcpt:
+                st.download_button("🖨️ طباعة إيصال الراتب (HTML)",
+                    st.session_state.sal_rcpt.encode('utf-8'),
+                    f"Salary_{st.session_state.slk}.html",
+                    "text/html; charset=utf-8", key="dl_sal_rcpt")
+                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
+                if st.button("🆕 راتب جديد", key="new_sal"):
+                    st.session_state.sal_ready = False
+                    st.session_state.sal_rcpt  = None
+                    st.rerun()
+
+    # ===== تبويب 4: سجل العمال =====
     with tabs[3]:
-        sw = st.text_input("ابحث:")
-        if sw:
-            wr = run_query("SELECT name,iqama_id,start_date FROM workers WHERE name ILIKE :s OR iqama_id LIKE :s2",{"s":f"%{sw}%","s2":f"%{sw}%"})
-            st.dataframe(wr if not wr.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}),use_container_width=True)
+        st.markdown("#### سجل العمال والمدفوعات")
+        wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        if wdf4.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            sw = st.selectbox("اختر العامل:", ["الكل"] + wdf4['name'].tolist(), key="wrk_search")
+            if sw == "الكل":
+                st.dataframe(wdf4.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','base_salary':'الراتب الأساسي'}),
+                             use_container_width=True, hide_index=True)
+            else:
+                wid4 = int(wdf4[wdf4['name']==sw]['id'].iloc[0])
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.markdown("**السلف:**")
+                    adv_hist = run_query("SELECT amount,notes,created_at,status FROM worker_advances WHERE worker_id=:w ORDER BY created_at DESC",{"w":wid4})
+                    st.dataframe(adv_hist if not adv_hist.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True, hide_index=True)
+                with col_b:
+                    st.markdown("**الرواتب المدفوعة:**")
+                    sal_hist = run_query("SELECT month_year,base_salary,advances_deducted,net_paid,payout_date FROM worker_salaries WHERE worker_id=:w ORDER BY payout_date DESC",{"w":wid4})
+                    st.dataframe(sal_hist if not sal_hist.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True, hide_index=True)
 
 # ==========================================
 # [7] النظام المحاسبي
