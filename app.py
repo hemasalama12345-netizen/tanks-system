@@ -4556,11 +4556,18 @@ elif menu == "📈 النظام المحاسبي":
     # ===== تبويب 2: التدفق النقدي =====
     with tabs[1]:
         st.markdown(f"#### قائمة التدفقات النقدية | من {ds_a} إلى {de_a}")
-        ci_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        # تحصيلات العملاء = دفعات مسجلة + مقدمات الطلبيات في الفترة
+        ci_p_payments = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        ci_p_advances  = float(run_query("SELECT COALESCE(SUM(advance_paid),0) as t FROM orders WHERE order_date BETWEEN :s AND :e AND advance_paid>0",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        ci_p = round(ci_p_payments + ci_p_advances, 2)
         sp_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
         sl_p = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
         ex_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        pur_p = float(run_query("SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        # المشتريات الاستثمارية = ما دُفع فعلاً للموردين في الفترة
+        pur_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        # + المدفوعات النقدية المباشرة (نوع الدفع نقدي)
+        pur_cash = float(run_query("SELECT COALESCE(SUM(p.total_price),0) as t FROM procurement p WHERE p.date BETWEEN :s AND :e AND NOT EXISTS (SELECT 1 FROM supplier_payments sp WHERE sp.procurement_id=p.id)",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        pur_p = round(pur_p + pur_cash, 2)
         op_cf = round(ci_p - sl_p - ex_p, 2)
         inv_cf= round(-pur_p, 2)
         fin_cf= round(-sp_p, 2)
@@ -4579,7 +4586,7 @@ elif menu == "📈 النظام المحاسبي":
             ("◈ صافي التدفق التمويلي",          fin_cf,    "نتيجة"),
             ("══ صافي التدفق النقدي الكلي",     net_cf,    "صافي"),
         ]
-        cf_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else None) for r in cf_rows], columns=["البيان","المبلغ (ريال)"])
+        cf_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else float('nan')) for r in cf_rows], columns=["البيان","المبلغ (ريال)"])
         st.dataframe(cf_df, use_container_width=True, hide_index=True,
                      column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
         f1,f2,f3 = st.columns(3)
@@ -4604,7 +4611,7 @@ elif menu == "📈 النظام المحاسبي":
             ("صافي حقوق الملكية",                       equity,      "حقوق"),
             ("══ إجمالي الخصوم + حقوق الملكية",        round(total_liab+equity,2), "تحقق"),
         ]
-        bal_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else None) for r in bal_rows], columns=["البيان","المبلغ (ريال)"])
+        bal_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else float('nan')) for r in bal_rows], columns=["البيان","المبلغ (ريال)"])
         st.dataframe(bal_df, use_container_width=True, hide_index=True,
                      column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
         b1,b2,b3 = st.columns(3)
