@@ -232,11 +232,21 @@ raw_materials_list = [
 ]
 
 def ensure_inventory_rows():
-    """يضمن وجود صف لكل مادة في جدول inventory — يُنشئ الصف بصفر إذا لم يكن موجوداً"""
+    """يضمن وجود صف لكل مادة في جدول inventory"""
     for mat in raw_materials_list:
         run_write(
             "INSERT INTO inventory(material_name,quantity) VALUES(:m,0) ON CONFLICT(material_name) DO NOTHING",
             {"m": mat})
+    # جدول أسعار المخزون
+    try:
+        run_write("""CREATE TABLE IF NOT EXISTS inventory_prices(
+            material_name TEXT PRIMARY KEY,
+            unit_price FLOAT DEFAULT 0)""")
+        for mat in raw_materials_list:
+            run_write(
+                "INSERT INTO inventory_prices(material_name,unit_price) VALUES(:m,0) ON CONFLICT(material_name) DO NOTHING",
+                {"m": mat})
+    except Exception: pass
 
 # تشغيل عند كل إعادة تحميل للتأكد من وجود كل المواد
 try:
@@ -909,42 +919,18 @@ if menu == "📊 لوحة التحكم":
     # قيمة المخزون المتبقي (أصول وليس مصروف)
     # ======= قيمة المخزون =======
     # ======= قيمة المخزون =======
+    # ======= قيمة المخزون =======
     inv_df = run_query("SELECT material_name, quantity FROM inventory ORDER BY material_name")
     inv_value = 0.0
 
     if not inv_df.empty:
-        # جلب السجلات الفردية فقط (اسم المادة مطابق تماماً)
-        # نتجاهل السجلات المدمجة (التي تحتوي '/' أو تبدأ بـ '[')
-        clean_proc = run_query("""
-            SELECT material_name,
-                   SUM(total_price) as tp,
-                   SUM(quantity)    as qty
-            FROM procurement
-            WHERE quantity > 0
-              AND material_name NOT LIKE '%/%'
-            GROUP BY material_name
-        """)
-        price_map = {}
-        if not clean_proc.empty:
-            for _, pr in clean_proc.iterrows():
-                pname = str(pr['material_name'])
-                qty_p = float(pr['qty'] or 0)
-                tp_p  = float(pr['tp'] or 0)
-                if qty_p > 0:
-                    # أزل رقم الفاتورة من البداية [xxx]
-                    clean_name = pname.split(']', 1)[-1].strip() if ']' in pname else pname
-                    price_map[clean_name] = round(tp_p / qty_p, 2)
-
-        # ربط الأسعار بأسماء المخزون
-        def _find_price(mat):
-            # بحث exact أولاً
-            if mat in price_map: return price_map[mat]
-            # بحث بعد إزالة رقم الفاتورة
-            for k,v in price_map.items():
-                if mat.lower() == k.lower(): return v
-            return 0.0
-
-        inv_df['متوسط السعر'] = inv_df['material_name'].apply(_find_price)
+        # جلب الأسعار من جدول inventory_prices المخصص
+        try:
+            prices_df = run_query("SELECT material_name, unit_price FROM inventory_prices")
+            price_map = {str(r['material_name']): float(r['unit_price'] or 0) for _,r in prices_df.iterrows()} if not prices_df.empty else {}
+        except Exception:
+            price_map = {}
+        inv_df['متوسط السعر'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['القيمة']      = inv_df['quantity'] * inv_df['متوسط السعر']
         inv_value = float(inv_df['القيمة'].sum())
 
@@ -971,11 +957,11 @@ if menu == "📊 لوحة التحكم":
     st.markdown("### 📊 قائمة الدخل التفصيلية")
     income_df = pd.DataFrame([
         {"البيان": "➕ إيرادات المبيعات (مع الضريبة)",            "المبلغ (ريال)": round(total_sales,2)},
-        {"البيان": "➖ تكلفة المواد الخام المشتراة (مع الضريبة)", "المبلغ (ريال)": round(raw_mat_vat,2)},
+        {"البيان": "➖ تكلفة المواد الخام (مع الضريبة)",           "المبلغ (ريال)": round(raw_mat_vat,2)},
         {"البيان": "══ مجمل الربح",                                "المبلغ (ريال)": round(gross_profit,2)},
         {"البيان": "➖ الرواتب وتكاليف العمالة",                   "المبلغ (ريال)": round(total_sal,2)},
         {"البيان": "➖ المصاريف التشغيلية",                         "المبلغ (ريال)": round(total_exp,2)},
-        {"البيان": "══ إجمالي التكاليف والمصاريف",                "المبلغ (ريال)": round(total_costs,2)},
+        {"البيان": "══ إجمالي التكاليف",                           "المبلغ (ريال)": round(total_costs,2)},
         {"البيان": "💵 صافي الربح / الخسارة",                     "المبلغ (ريال)": round(net_profit,2)},
     ])
     st.dataframe(income_df, use_container_width=True, hide_index=True,
@@ -984,7 +970,7 @@ if menu == "📊 لوحة التحكم":
     st.markdown("---")
 
     # ======= جدول المخزون =======
-    st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
+    st.markdown("### 🏪 قيمة المخزون (أصول)")
     if not inv_df.empty:
         inv_show = inv_df[['material_name','quantity','متوسط السعر','القيمة']].copy()
         inv_show.columns = ['المادة الخام','الكمية','متوسط السعر (ر)','القيمة (ريال)']
@@ -994,14 +980,11 @@ if menu == "📊 لوحة التحكم":
                          "متوسط السعر (ر)": st.column_config.NumberColumn(format="%.2f"),
                          "القيمة (ريال)":   st.column_config.NumberColumn(format="%.2f"),
                      })
-        # مواد بدون سعر
-        no_price = inv_df[inv_df['متوسط السعر']==0]['material_name'].tolist()
-        if no_price:
-            st.warning(f"⚠️ {len(no_price)} مادة بدون سعر شراء مسجل: {', '.join(no_price)}")
-            st.caption("أضف فاتورة شراء لهذه المواد من قسم المشتريات لتظهر قيمتها.")
-        st.success(f"📦 **إجمالي قيمة المخزون كأصول: {inv_value:,.2f} ريال**")
+        st.success(f"📦 **إجمالي قيمة المخزون: {inv_value:,.2f} ريال**")
+        st.caption("لتحديث الأسعار: اذهب لقسم المشتريات والمخزن → ضبط المخزن")
     else:
         st.info("المخزن فارغ")
+
 
 
 
@@ -2582,7 +2565,7 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
 # ==========================================
 elif menu == "📥 المشتريات والمخزن":
     st.subheader("📥 المشتريات والمخزن")
-    tabs = st.tabs(["🤝 مورد جديد","🚚 فاتورة توريد","💳 دفعات مورد","🔍 كشف حساب مورد","🔧 ضبط المخزن","📊 رصيد المخزن","🗑️ حذف مورد"])
+    tabs = st.tabs(["🤝 مورد جديد","🚚 فاتورة توريد","💳 دفعات مورد","🔍 كشف حساب مورد","🔧 ضبط المخزن","📊 رصيد المخزن","💰 أسعار المخزون","🗑️ حذف مورد"])
 
     with tabs[0]:
         with st.form("sf", clear_on_submit=True):
@@ -2689,14 +2672,47 @@ elif menu == "📥 المشتريات والمخزن":
                                 ok_inv = True
 
                         if ok_inv:
-                            # تحديث المخزون لكل مادة
+                            # تحديث المخزون + متوسط السعر المرجح لكل مادة
                             for item in st.session_state.pitems:
+                                mat_n = str(item['المادة'])
+                                new_q = float(item['الكمية'])
+                                new_p = float(item['سعر الوحدة'])
+
+                                # جلب الكمية والسعر الحالي من المخزن
+                                cur_inv = run_query(
+                                    "SELECT quantity FROM inventory WHERE material_name=:m",
+                                    {"m": mat_n})
+                                cur_price = run_query(
+                                    "SELECT unit_price FROM inventory_prices WHERE material_name=:m",
+                                    {"m": mat_n})
+                                old_q = float(cur_inv['quantity'].iloc[0]) if not cur_inv.empty else 0.0
+                                old_p = float(cur_price['unit_price'].iloc[0]) if not cur_price.empty else 0.0
+
+                                # متوسط التكلفة المرجح
+                                total_q = old_q + new_q
+                                if total_q > 0:
+                                    avg_p = round((old_q * old_p + new_q * new_p) / total_q, 2)
+                                else:
+                                    avg_p = new_p
+
+                                # تحديث المخزون
                                 run_write(
                                     """INSERT INTO inventory(material_name,quantity)
                                        VALUES(:m,:q)
                                        ON CONFLICT(material_name)
                                        DO UPDATE SET quantity=inventory.quantity+EXCLUDED.quantity""",
-                                    {"m": str(item['المادة']), "q": float(item['الكمية'])})
+                                    {"m": mat_n, "q": new_q})
+
+                                # تحديث السعر المرجح في inventory_prices
+                                try:
+                                    run_write(
+                                        """INSERT INTO inventory_prices(material_name,unit_price)
+                                           VALUES(:m,:p)
+                                           ON CONFLICT(material_name)
+                                           DO UPDATE SET unit_price=EXCLUDED.unit_price""",
+                                        {"m": mat_n, "p": avg_p})
+                                except Exception:
+                                    pass
 
                             # تسجيل الدفعة المقدمة إن وُجدت
                             if adv_proc > 0:
@@ -3048,6 +3064,37 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         if not idf2.empty: st.download_button("⬇️ تنزيل",df_to_csv(idf2),"inventory.csv","text/csv")
 
     with tabs[6]:
+        st.markdown("### 💰 ضبط أسعار المخزون")
+        st.info("أدخل متوسط سعر الوحدة لكل مادة — يُستخدم لحساب قيمة المخزون في لوحة التحكم")
+        try:
+            prices_df = run_query("SELECT material_name, unit_price FROM inventory_prices ORDER BY material_name")
+        except Exception:
+            prices_df = pd.DataFrame()
+        if not prices_df.empty:
+            for _, pr in prices_df.iterrows():
+                mat = str(pr['material_name'])
+                cur = float(pr['unit_price'] or 0)
+                pc1,pc2,pc3 = st.columns([3,2,1])
+                pc1.write(f"**{mat}**")
+                new_p = pc2.number_input("ريال/وحدة", min_value=0.0, value=cur,
+                                          key=f"price_{mat[:15]}", label_visibility="collapsed")
+                if pc3.button("💾", key=f"save_p_{mat[:15]}"):
+                    run_write("UPDATE inventory_prices SET unit_price=:p WHERE material_name=:m",
+                              {"p": float(new_p), "m": mat})
+                    st.success(f"✅ تم حفظ سعر {mat}: {new_p:,.2f} ر")
+                    st.rerun()
+        # زر حفظ الكل
+        st.markdown("---")
+        if st.button("💾 حفظ جميع الأسعار دفعة واحدة", type="primary"):
+            for _, pr in prices_df.iterrows():
+                mat = str(pr['material_name'])
+                new_p_all = st.session_state.get(f"price_{mat[:15]}", float(pr['unit_price'] or 0))
+                run_write("UPDATE inventory_prices SET unit_price=:p WHERE material_name=:m",
+                          {"p": float(new_p_all), "m": mat})
+            st.success("✅ تم حفظ جميع الأسعار!")
+            st.rerun()
+
+    with tabs[7]:
         st.markdown("### 🗑️ حذف مورد")
         st.warning("⚠️ تنبيه: حذف المورد سيحذف جميع بياناته وفواتيره ودفعاته بشكل نهائي!")
         del_sdf = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
