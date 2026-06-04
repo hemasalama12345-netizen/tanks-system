@@ -911,20 +911,34 @@ if menu == "📊 لوحة التحكم":
     inv_value = 0.0
     if not inv_df.empty:
         # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
-        # حساب متوسط سعر كل مادة من سجلات الشراء
-        proc_prices = run_query("""
-            SELECT material_name,
-                   CASE WHEN SUM(quantity)>0
-                        THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
-                        ELSE 0 END as avg_price
-            FROM procurement
-            WHERE quantity > 0
-              AND material_name NOT LIKE '%[%'
-            GROUP BY material_name""")
+        # حساب متوسط السعر لكل مادة في المخزن
+        # البيانات القديمة محفوظة بأسماء مختلطة لذلك نستخدم ILIKE للمطابقة
         price_map = {}
-        if not proc_prices.empty:
-            price_map = {str(r['material_name']): float(r['avg_price'] or 0)
-                         for _,r in proc_prices.iterrows()}
+        inv_names = [str(r['material_name']) for _,r in inv_df.iterrows()]
+        for mat_name in inv_names:
+            # ابحث عن أي سجل في procurement يحتوي اسم المادة
+            # نأخذ أول كلمة مميزة من الاسم للبحث
+            search_key = mat_name.split('(')[0].strip()[:8]  # أول 8 حروف
+            p_row = run_query(
+                """SELECT CASE WHEN SUM(quantity)>0
+                              THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
+                              ELSE 0 END as avg_price
+                   FROM procurement
+                   WHERE material_name ILIKE :s AND quantity > 0""",
+                {"s": f"%{search_key}%"})
+            if not p_row.empty and float(p_row['avg_price'].iloc[0] or 0) > 0:
+                price_map[mat_name] = float(p_row['avg_price'].iloc[0])
+            else:
+                # fallback: ابحث بالاسم الكامل
+                p_row2 = run_query(
+                    """SELECT CASE WHEN SUM(quantity)>0
+                                  THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
+                                  ELSE 0 END as avg_price
+                       FROM procurement
+                       WHERE material_name ILIKE :s AND quantity > 0""",
+                    {"s": f"%{mat_name[:6]}%"})
+                if not p_row2.empty:
+                    price_map[mat_name] = float(p_row2['avg_price'].iloc[0] or 0)
         inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
@@ -966,12 +980,6 @@ if menu == "📊 لوحة التحكم":
     st.markdown("---")
 
     # ======= جدول المخزون كأصول =======
-    # DEBUG: عرض ما في procurement لفهم المشكلة
-    _debug_proc = run_query("SELECT material_name, quantity, unit_price, total_price FROM procurement LIMIT 10")
-    if not _debug_proc.empty:
-        with st.expander("🔍 DEBUG: بيانات procurement (مؤقت)", expanded=False):
-            st.dataframe(_debug_proc, use_container_width=True)
-
     st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
     if not inv_df.empty:
         inv_display = inv_df[['material_name','quantity','متوسط سعر الوحدة','قيمة المخزون']].copy()
