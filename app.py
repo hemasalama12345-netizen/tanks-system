@@ -908,44 +908,47 @@ if menu == "📊 لوحة التحكم":
 
     # قيمة المخزون المتبقي (أصول وليس مصروف)
     # ======= قيمة المخزون =======
-    inv_df = run_query("SELECT material_name, quantity FROM inventory WHERE quantity > 0 ORDER BY material_name")
+    # ======= قيمة المخزون =======
+    inv_df = run_query("SELECT material_name, quantity FROM inventory ORDER BY material_name")
     inv_value = 0.0
 
     if not inv_df.empty:
-        # جلب كل سجلات الشراء مرة واحدة
-        all_proc = run_query(
-            "SELECT material_name, quantity, total_price FROM procurement WHERE quantity > 0")
-
-        # بناء price_map لكل مادة في المخزن
+        # جلب السجلات الفردية فقط (اسم المادة مطابق تماماً)
+        # نتجاهل السجلات المدمجة (التي تحتوي '/' أو تبدأ بـ '[')
+        clean_proc = run_query("""
+            SELECT material_name,
+                   SUM(total_price) as tp,
+                   SUM(quantity)    as qty
+            FROM procurement
+            WHERE quantity > 0
+              AND material_name NOT LIKE '%/%'
+            GROUP BY material_name
+        """)
         price_map = {}
-        if not all_proc.empty:
-            for inv_mat in inv_df['material_name'].tolist():
-                best_price = 0.0
-                total_tp = 0.0
-                total_qty = 0.0
-                for _, pr in all_proc.iterrows():
-                    pname = str(pr['material_name'])
-                    pqty  = float(pr['quantity'] or 0)
-                    ptp   = float(pr['total_price'] or 0)
-                    if pqty <= 0: continue
-                    # مطابقة: إما exact أو الاسم موجود في السجل
-                    inv_short = inv_mat.split('(')[0].strip()[:6].lower()
-                    if (inv_mat == pname or
-                        inv_mat.lower() in pname.lower() or
-                        (len(inv_short) >= 4 and inv_short in pname.lower())):
-                        # لو سجل مدمج (يحتوي /) نقسم على عدد المواد
-                        n_mats = len(pname.split('/')) if '/' in pname else 1
-                        total_tp  += ptp / n_mats
-                        total_qty += pqty / n_mats
-                if total_qty > 0:
-                    best_price = round(total_tp / total_qty, 2)
-                price_map[inv_mat] = best_price
+        if not clean_proc.empty:
+            for _, pr in clean_proc.iterrows():
+                pname = str(pr['material_name'])
+                qty_p = float(pr['qty'] or 0)
+                tp_p  = float(pr['tp'] or 0)
+                if qty_p > 0:
+                    # أزل رقم الفاتورة من البداية [xxx]
+                    clean_name = pname.split(']', 1)[-1].strip() if ']' in pname else pname
+                    price_map[clean_name] = round(tp_p / qty_p, 2)
 
-        inv_df['متوسط السعر'] = inv_df['material_name'].map(price_map).fillna(0.0)
+        # ربط الأسعار بأسماء المخزون
+        def _find_price(mat):
+            # بحث exact أولاً
+            if mat in price_map: return price_map[mat]
+            # بحث بعد إزالة رقم الفاتورة
+            for k,v in price_map.items():
+                if mat.lower() == k.lower(): return v
+            return 0.0
+
+        inv_df['متوسط السعر'] = inv_df['material_name'].apply(_find_price)
         inv_df['القيمة']      = inv_df['quantity'] * inv_df['متوسط السعر']
         inv_value = float(inv_df['القيمة'].sum())
 
-    # الحسابات المالية
+    # ======= الحسابات المالية =======
     total_costs  = raw_mat_cost + total_sal + total_exp
     gross_profit = total_sales - raw_mat_vat
     net_profit   = total_sales - total_costs
@@ -980,7 +983,7 @@ if menu == "📊 لوحة التحكم":
 
     st.markdown("---")
 
-    # ======= جدول المخزون كأصول =======
+    # ======= جدول المخزون =======
     st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
     if not inv_df.empty:
         inv_show = inv_df[['material_name','quantity','متوسط السعر','القيمة']].copy()
@@ -991,9 +994,15 @@ if menu == "📊 لوحة التحكم":
                          "متوسط السعر (ر)": st.column_config.NumberColumn(format="%.2f"),
                          "القيمة (ريال)":   st.column_config.NumberColumn(format="%.2f"),
                      })
+        # مواد بدون سعر
+        no_price = inv_df[inv_df['متوسط السعر']==0]['material_name'].tolist()
+        if no_price:
+            st.warning(f"⚠️ {len(no_price)} مادة بدون سعر شراء مسجل: {', '.join(no_price)}")
+            st.caption("أضف فاتورة شراء لهذه المواد من قسم المشتريات لتظهر قيمتها.")
         st.success(f"📦 **إجمالي قيمة المخزون كأصول: {inv_value:,.2f} ريال**")
     else:
         st.info("المخزن فارغ")
+
 
 
     st.markdown("---")
