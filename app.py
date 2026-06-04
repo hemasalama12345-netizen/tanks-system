@@ -911,97 +911,50 @@ if menu == "📊 لوحة التحكم":
     inv_value = 0.0
     if not inv_df.empty:
         # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
-        # حساب متوسط السعر لكل مادة في المخزن
-        # للسجلات المنفردة (مادة واحدة): total_price / quantity
-        # للسجلات المدمجة (مواد متعددة): نقسم على عدد المواد في السجل
+        # حساب متوسط السعر — exact match فقط من سجلات الشراء المنفردة
         price_map = {}
-        all_proc = run_query(
-            "SELECT material_name, quantity, total_price FROM procurement WHERE quantity > 0 ORDER BY id DESC")
-        if not all_proc.empty:
-            for _,pr in all_proc.iterrows():
-                mat_str = str(pr['material_name'])
-                qty_p   = float(pr['quantity'] or 1)
-                total_p = float(pr['total_price'] or 0)
-                # هل هذا سجل مادة واحدة أم مدمج؟
-                # السجل المنفرد: اسمه يطابق اسم مادة في المخزن
-                # السجل المدمج: يحتوي '/' ويبدأ بـ '['
-                if '/' in mat_str and mat_str.startswith('['):
-                    # سجل مدمج - استخرج قائمة المواد
-                    # الشكل: [رقم] مادة1 / مادة2 / ...
-                    parts_str = mat_str.split(']', 1)[-1].strip() if ']' in mat_str else mat_str
-                    parts = [p.strip() for p in parts_str.split('/') if p.strip()]
-                    n_parts = max(len(parts), 1)
-                    price_per_unit = total_p / qty_p / n_parts if qty_p > 0 else 0
-                    # ربط كل جزء بأقرب مادة في المخزن
-                    inv_names2 = [str(r['material_name']) for _,r in inv_df.iterrows()]
-                    for part in parts:
-                        part_clean = part.strip()[:10].lower()
-                        for inv_mat in inv_names2:
-                            if part_clean[:5] in inv_mat.lower() or inv_mat.lower()[:5] in part_clean:
-                                if inv_mat not in price_map or price_map[inv_mat] == 0:
-                                    price_map[inv_mat] = round(price_per_unit, 2)
-                                break
-                else:
-                    # سجل منفرد - ربط مباشر
-                    unit_price = total_p / qty_p if qty_p > 0 else 0
-                    inv_names2 = [str(r['material_name']) for _,r in inv_df.iterrows()]
-                    for inv_mat in inv_names2:
-                        mat_key = mat_str.split(']', 1)[-1].strip() if ']' in mat_str else mat_str
-                        if mat_key[:8].lower() in inv_mat.lower() or inv_mat[:8].lower() in mat_key.lower():
-                            if inv_mat not in price_map or price_map[inv_mat] == 0:
-                                price_map[inv_mat] = round(unit_price, 2)
-                            break
+        inv_names_list = [str(r['material_name']) for _,r in inv_df.iterrows()]
+        for inv_mat in inv_names_list:
+            p = run_query(
+                """SELECT CASE WHEN SUM(quantity)>0
+                          THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
+                          ELSE 0 END as avg_p
+                   FROM procurement
+                   WHERE material_name = :m AND quantity > 0""",
+                {"m": inv_mat})
+            val = float(p['avg_p'].iloc[0]) if not p.empty and p['avg_p'].iloc[0] else 0.0
+            price_map[inv_mat] = val
+
         inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
 
-    # الحسابات
-    total_costs   = raw_mat_cost + total_sal + total_exp  # تكاليف الفترة (بدون ضريبة المواد)
-    gross_profit  = total_sales - raw_mat_vat              # مجمل الربح
-    net_profit    = total_sales - total_costs              # صافي الربح
-    profit_margin = (net_profit / total_sales * 100) if total_sales > 0 else 0
-
-    # ======= عرض البطاقات الرئيسية =======
-    st.markdown("### 💰 ملخص الأداء المالي للفترة")
-    r1c1,r1c2,r1c3,r1c4 = st.columns(4)
-    r1c1.metric("📈 إجمالي المبيعات", f"{total_sales:,.2f} ر")
-    r1c2.metric("🏭 تكلفة المواد الخام (مع الضريبة)", f"{raw_mat_vat:,.2f} ر")
-    r1c3.metric("👷 الرواتب والمصاريف", f"{total_sal+total_exp:,.2f} ر")
-    color = "normal" if net_profit >= 0 else "inverse"
-    r1c4.metric("💵 صافي الربح / الخسارة",
-                f"{net_profit:,.2f} ر",
-                delta=f"{'ربح ✅' if net_profit>=0 else 'خسارة ❌'} | هامش {profit_margin:.1f}%",
-                delta_color=color)
-
-    st.markdown("---")
-
-    # ======= جدول قائمة الدخل =======
-    st.markdown("### 📊 قائمة الدخل التفصيلية")
-    income_df = pd.DataFrame([
-        {"البيان": "➕ إيرادات المبيعات (مع الضريبة)",          "المبلغ (ريال)": round(total_sales,2)},
-        {"البيان": "➖ تكلفة المواد الخام (مع الضريبة)",         "المبلغ (ريال)": round(raw_mat_vat,2)},
-        {"البيان": "══ مجمل الربح",                              "المبلغ (ريال)": round(gross_profit,2)},
-        {"البيان": "➖ الرواتب وتكاليف العمالة",                 "المبلغ (ريال)": round(total_sal,2)},
-        {"البيان": "➖ المصاريف التشغيلية",                       "المبلغ (ريال)": round(total_exp,2)},
-        {"البيان": "══ إجمالي التكاليف والمصاريف",              "المبلغ (ريال)": round(total_costs,2)},
-        {"البيان": "💵 صافي الربح / الخسارة",                   "المبلغ (ريال)": round(net_profit,2)},
-    ])
-    st.dataframe(income_df, use_container_width=True, hide_index=True,
-                 column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
-
-    st.markdown("---")
-
-    # ======= جدول المخزون كأصول =======
     st.markdown("### 🏪 قيمة المخزون (أصول — لا يُحتسب مصروفاً)")
     if not inv_df.empty:
         inv_display = inv_df[['material_name','quantity','متوسط سعر الوحدة','قيمة المخزون']].copy()
-        inv_display.columns = ['المادة الخام','الكمية','متوسط السعر','القيمة (ريال)']
+        inv_display.columns = ['المادة الخام','الكمية','متوسط السعر (ر)','القيمة (ريال)']
         st.dataframe(inv_display, use_container_width=True, hide_index=True,
                      column_config={
-                         "الكمية":       st.column_config.NumberColumn(format="%.2f"),
-                         "متوسط السعر":  st.column_config.NumberColumn(format="%.2f ر"),
-                         "القيمة (ريال)":st.column_config.NumberColumn(format="%.2f ر"),
+                         "الكمية":          st.column_config.NumberColumn(format="%.2f"),
+                         "متوسط السعر (ر)": st.column_config.NumberColumn(format="%.2f"),
+                         "القيمة (ريال)":   st.column_config.NumberColumn(format="%.2f"),
                      })
+        # مواد بدون سعر — ضبط يدوي
+        zero_mats = [str(r['المادة الخام']) for _,r in inv_display.iterrows()
+                     if float(r.get('متوسط السعر (ر)',0) or 0)==0 and float(r.get('الكمية',0) or 0)>0]
+        if zero_mats:
+            with st.expander(f"⚙️ ضبط سعر {len(zero_mats)} مادة بدون سعر (للحساب اليدوي)", expanded=False):
+                st.caption("هذه المواد ليس لها سعر شراء مسجل. أدخل السعر لحساب قيمة المخزون.")
+                extra_val = 0.0
+                for zm in zero_mats:
+                    zc1,zc2 = st.columns([3,1])
+                    zc1.write(f"• {zm}")
+                    zp = zc2.number_input("ر", min_value=0.0, value=0.0, key=f"zp_{zm[:8]}")
+                    if zp > 0:
+                        qty_zm_rows = inv_df[inv_df['material_name']==zm]
+                        if not qty_zm_rows.empty:
+                            extra_val += float(qty_zm_rows['quantity'].iloc[0]) * zp
+                inv_value += extra_val
         st.success(f"📦 **إجمالي قيمة المخزون كأصول: {inv_value:,.2f} ريال**")
     else:
         st.info("المخزن فارغ")
