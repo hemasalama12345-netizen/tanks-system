@@ -4464,45 +4464,158 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 # [7] النظام المحاسبي
 # ==========================================
 elif menu == "📈 النظام المحاسبي":
-    st.subheader("📈 النظام المحاسبي")
-    tabs = st.tabs(["💹 قائمة الدخل","💰 التدفق النقدي","⚖️ الميزانية العمومية"])
+    st.subheader("📈 النظام المحاسبي — التقارير المالية")
     c1,c2 = st.columns(2)
-    ds_a = c1.date_input("من:", datetime.date.today()-datetime.timedelta(days=30), key="ads")
+    ds_a = c1.date_input("من:", datetime.date.today()-datetime.timedelta(days=365), key="ads")
     de_a = c2.date_input("إلى:", datetime.date.today(), key="ade")
+    today_acc = datetime.date.today().strftime("%Y/%m/%d")
+
+    # ===== جلب كل البيانات مرة واحدة =====
+    # الإيرادات
+    sales_tot = float(run_query("SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+    # تكلفة المواد المستهلكة فعلياً في التصنيع
+    try:
+        ip_df_a = run_query("SELECT material_name, unit_price FROM inventory_prices")
+        ip_map_a = {str(r['material_name']): float(r['unit_price'] or 0) for _,r in ip_df_a.iterrows()} if not ip_df_a.empty else {}
+    except Exception: ip_map_a = {}
+    prod_a = run_query("""SELECT pd.actual_qty,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp
+        FROM production_days pd JOIN orders o ON pd.order_id=o.order_id
+        WHERE pd.status='مغلق' AND pd.date BETWEEN :s AND :e""", {"s":ds_a,"e":de_a})
+    cogs = 0.0
+    if not prod_a.empty:
+        resin_p = next((v for k,v in ip_map_a.items() if 'راتنج' in k or 'ريزن' in k), 0.0)
+        for _,r in prod_a.iterrows():
+            q = float(r['actual_qty'] or 0)
+            cogs += q*(float(r['resin_exp'] or 0)*resin_p + float(r['mat_exp'] or 0)*ip_map_a.get("ألياف (Mat 450)",0)
+                      +float(r['roving_exp'] or 0)*ip_map_a.get("روفرز (Roving 600)",0)
+                      +float(r['tissue_exp'] or 0)*ip_map_a.get("تيسو (Tissue)",0)
+                      +float(r['catalyst_exp'] or 0)*ip_map_a.get("مصلد (Catalyst)",0)
+                      +float(r['calcium_exp'] or 0)*ip_map_a.get("كربونات الكالسيوم",0)
+                      +float(r['silica_exp'] or 0)*ip_map_a.get("سيليكا (Silica)",0))
+    cogs = round(cogs, 2)
+    gross_p = round(sales_tot - cogs, 2)
+    # مصاريف التشغيل
+    sal_tot  = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+    exp_tot  = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+    op_exp   = round(sal_tot + exp_tot, 2)
+    net_inc  = round(gross_p - op_exp, 2)
+
+    # الأصول
+    inv_val = 0.0
+    try:
+        inv_q = run_query("SELECT material_name, quantity FROM inventory WHERE quantity>0")
+        if not inv_q.empty:
+            for _,r in inv_q.iterrows():
+                inv_val += float(r['quantity']) * ip_map_a.get(str(r['material_name']), 0.0)
+    except Exception: pass
+    inv_val = round(inv_val, 2)
+    # ذمم مدينة (مستحق من العملاء)
+    recv = float(run_query("""SELECT COALESCE(SUM(o.total_price*1.15 - COALESCE(o.advance_paid,0) -
+        COALESCE((SELECT SUM(cp.amount) FROM customer_payments cp WHERE cp.order_id=o.order_id),0)),0) as t
+        FROM orders o WHERE o.status != 'ملغاة'""")['t'].iloc[0])
+    recv = max(0, round(recv, 2))
+    # نقدية (إجمالي تحصيلات - إجمالي مدفوعات)
+    cash_in  = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments")['t'].iloc[0])
+    cash_out = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments")['t'].iloc[0])
+    cash_sal = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries")['t'].iloc[0])
+    cash_exp = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses")['t'].iloc[0])
+    cash_bal = round(cash_in - cash_out - cash_sal - cash_exp, 2)
+    total_assets = round(cash_bal + inv_val + recv, 2)
+
+    # الخصوم
+    sup_due = float(run_query("""SELECT COALESCE(SUM(p.total_price*1.15 -
+        COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp WHERE sp.supplier_id=p.supplier_id),0)),0) as t
+        FROM procurement p""")['t'].iloc[0])
+    sup_due = max(0, round(sup_due, 2))
+    total_liab = sup_due
+    equity = round(total_assets - total_liab, 2)
+
+    tabs = st.tabs(["📊 قائمة الدخل","💰 التدفق النقدي","⚖️ الميزانية العمومية"])
+
+    # ===== تبويب 1: قائمة الدخل =====
     with tabs[0]:
-        sales = float(run_query("SELECT COALESCE(SUM(grand_total),0) as t FROM sales_invoices WHERE invoice_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        mc = float(run_query("SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        sc = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        oc = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        gp = sales-mc; tc = mc+sc+oc; np = sales-tc
-        idf3 = pd.DataFrame({"البيان":["إيرادات المبيعات","تكلفة المواد","مجمل الربح","الرواتب","المصاريف التشغيلية","إجمالي التكاليف","صافي الربح/الخسارة"],"المبلغ (ريال)":[sales,mc,gp,sc,oc,tc,np]})
-        st.dataframe(idf3,use_container_width=True)
-        m1,m2,m3 = st.columns(3)
-        m1.metric("المبيعات",f"{sales:,.2f} ر"); m2.metric("التكاليف",f"{tc:,.2f} ر"); m3.metric("صافي الربح",f"{np:,.2f} ر",delta="ربح ✅" if np>=0 else "خسارة ❌")
-        st.download_button("⬇️ تنزيل",df_to_csv(idf3),"income.csv","text/csv")
+        st.markdown(f"#### قائمة الدخل | من {ds_a} إلى {de_a}")
+        income_rows = [
+            ("إيرادات المبيعات (مع الضريبة)",      sales_tot,  "إيراد"),
+            ("(–) تكلفة البضاعة المباعة (COGS)",    cogs,       "تكلفة"),
+            ("══ مجمل الربح (Gross Profit)",         gross_p,    "نتيجة"),
+            ("(–) رواتب العمال",                     sal_tot,    "مصروف"),
+            ("(–) المصاريف التشغيلية",               exp_tot,    "مصروف"),
+            ("══ إجمالي مصاريف التشغيل",             op_exp,     "إجمالي"),
+            ("💵 صافي الربح / الخسارة (Net Income)", net_inc,    "صافي"),
+        ]
+        inc_df = pd.DataFrame(income_rows, columns=["البيان","المبلغ (ريال)","النوع"])
+        st.dataframe(inc_df[["البيان","المبلغ (ريال)"]], use_container_width=True, hide_index=True,
+                     column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
+        i1,i2,i3 = st.columns(3)
+        i1.metric("إجمالي المبيعات", f"{sales_tot:,.2f} ر")
+        i2.metric("تكلفة البضاعة المباعة", f"{cogs:,.2f} ر")
+        i3.metric("صافي الربح", f"{net_inc:,.2f} ر", delta="ربح ✅" if net_inc>=0 else "خسارة ❌")
+        st.download_button("⬇️ تنزيل CSV", df_to_csv(inc_df), "income_statement.csv", "text/csv")
+
+    # ===== تبويب 2: التدفق النقدي =====
     with tabs[1]:
-        ci = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        so = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        slo = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        eo = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
-        to2 = so+slo+eo; nf = ci-to2
-        fdf = pd.DataFrame({"البيان":["تحصيلات العملاء","مدفوعات الموردين","الرواتب","المصاريف","إجمالي المدفوعات","صافي التدفق النقدي"],"المبلغ (ريال)":[ci,so,slo,eo,to2,nf]})
-        st.dataframe(fdf,use_container_width=True)
-        m1,m2,m3 = st.columns(3)
-        m1.metric("التحصيلات",f"{ci:,.2f} ر"); m2.metric("المدفوعات",f"{to2:,.2f} ر"); m3.metric("صافي التدفق",f"{nf:,.2f} ر",delta="موجب ✅" if nf>=0 else "سالب ❌")
-        st.download_button("⬇️ تنزيل",df_to_csv(fdf),"cashflow.csv","text/csv")
+        st.markdown(f"#### قائمة التدفقات النقدية | من {ds_a} إلى {de_a}")
+        ci_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM customer_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        sp_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments WHERE payment_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        sl_p = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE payout_date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        ex_p = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM general_expenses WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        pur_p = float(run_query("SELECT COALESCE(SUM(total_price),0) as t FROM procurement WHERE date BETWEEN :s AND :e",{"s":ds_a,"e":de_a})['t'].iloc[0])
+        op_cf = round(ci_p - sl_p - ex_p, 2)
+        inv_cf= round(-pur_p, 2)
+        fin_cf= round(-sp_p, 2)
+        net_cf= round(op_cf + inv_cf + fin_cf, 2)
+        cf_rows = [
+            ("── أنشطة التشغيل (Operating)", "",         ""),
+            ("تحصيلات من العملاء",              ci_p,      "+"),
+            ("(–) رواتب مدفوعة",                sl_p,      "–"),
+            ("(–) مصاريف تشغيلية",              ex_p,      "–"),
+            ("◈ صافي التدفق التشغيلي",          op_cf,     "نتيجة"),
+            ("── أنشطة الاستثمار (Investing)",  "",        ""),
+            ("(–) مشتريات مواد خام",             pur_p,     "–"),
+            ("◈ صافي التدفق الاستثماري",        inv_cf,    "نتيجة"),
+            ("── أنشطة التمويل (Financing)",    "",        ""),
+            ("(–) مدفوعات للموردين",             sp_p,      "–"),
+            ("◈ صافي التدفق التمويلي",          fin_cf,    "نتيجة"),
+            ("══ صافي التدفق النقدي الكلي",     net_cf,    "صافي"),
+        ]
+        cf_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else None) for r in cf_rows], columns=["البيان","المبلغ (ريال)"])
+        st.dataframe(cf_df, use_container_width=True, hide_index=True,
+                     column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
+        f1,f2,f3 = st.columns(3)
+        f1.metric("التدفق التشغيلي", f"{op_cf:,.2f} ر", delta="✅" if op_cf>=0 else "❌")
+        f2.metric("التدفق الاستثماري", f"{inv_cf:,.2f} ر")
+        f3.metric("صافي التدفق الكلي", f"{net_cf:,.2f} ر", delta="✅" if net_cf>=0 else "❌")
+        st.download_button("⬇️ تنزيل CSV", df_to_csv(cf_df), "cashflow.csv", "text/csv")
+
+    # ===== تبويب 3: الميزانية العمومية =====
     with tabs[2]:
-        iv = float(run_query("SELECT COALESCE(SUM(quantity),0) as t FROM inventory")['t'].iloc[0])
-        rec = float(run_query("SELECT COALESCE(SUM(net_required),0) as t FROM sales_invoices")['t'].iloc[0])
-        ta = iv+rec
-        pay2 = float(run_query("SELECT COALESCE(SUM(total_price)*1.15,0) as t FROM procurement")['t'].iloc[0])
-        pp = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM supplier_payments")['t'].iloc[0])
-        np2 = pay2-pp; eq = ta-np2
-        bdf = pd.DataFrame({"البيان":["المخزون","ذمم مدينة","إجمالي الأصول","ذمم دائنة (موردين)","إجمالي الخصوم","حقوق الملكية"],"المبلغ (ريال)":[iv,rec,ta,np2,np2,eq]})
-        st.dataframe(bdf,use_container_width=True)
-        m1,m2,m3 = st.columns(3)
-        m1.metric("إجمالي الأصول",f"{ta:,.2f} ر"); m2.metric("إجمالي الخصوم",f"{np2:,.2f} ر"); m3.metric("حقوق الملكية",f"{eq:,.2f} ر")
-        st.download_button("⬇️ تنزيل",df_to_csv(bdf),"balance.csv","text/csv")
+        st.markdown(f"#### الميزانية العمومية (Balance Sheet) | بتاريخ {today_acc}")
+        bal_rows = [
+            ("══ الأصول المتداولة (Current Assets)",   "",          ""),
+            ("النقدية والأرصدة",                        cash_bal,    "أصل"),
+            ("المخزون (بالتكلفة)",                     inv_val,     "أصل"),
+            ("ذمم مدينة (مستحق من العملاء)",            recv,        "أصل"),
+            ("◈ إجمالي الأصول المتداولة",               total_assets,"إجمالي"),
+            ("══ الخصوم المتداولة (Current Liabilities)","",         ""),
+            ("ذمم دائنة (مستحق للموردين)",              sup_due,     "خصم"),
+            ("◈ إجمالي الخصوم",                         total_liab,  "إجمالي"),
+            ("══ حقوق الملكية (Equity)",                "",          ""),
+            ("صافي حقوق الملكية",                       equity,      "حقوق"),
+            ("══ إجمالي الخصوم + حقوق الملكية",        round(total_liab+equity,2), "تحقق"),
+        ]
+        bal_df = pd.DataFrame([(r[0], r[1] if r[1]!="" else None) for r in bal_rows], columns=["البيان","المبلغ (ريال)"])
+        st.dataframe(bal_df, use_container_width=True, hide_index=True,
+                     column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
+        b1,b2,b3 = st.columns(3)
+        b1.metric("إجمالي الأصول",     f"{total_assets:,.2f} ر")
+        b2.metric("إجمالي الخصوم",     f"{total_liab:,.2f} ر")
+        b3.metric("حقوق الملكية",       f"{equity:,.2f} ر", delta="✅" if equity>=0 else "⚠️")
+        if abs(total_assets - (total_liab + equity)) < 1:
+            st.success("✅ الميزانية متوازنة — الأصول = الخصوم + حقوق الملكية")
+        else:
+            st.warning(f"⚠️ فرق في التوازن: {abs(total_assets-(total_liab+equity)):,.2f} ر")
+        st.download_button("⬇️ تنزيل CSV", df_to_csv(bal_df), "balance_sheet.csv", "text/csv")
 
 # ==========================================
 # [8] الاستعلام المتقدم
