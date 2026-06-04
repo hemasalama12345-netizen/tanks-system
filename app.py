@@ -912,12 +912,16 @@ if menu == "📊 لوحة التحكم":
     if not inv_df.empty:
         # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
         proc_prices = run_query("""
-            SELECT material_name, AVG(unit_price) as avg_price
+            SELECT material_name,
+                   CASE WHEN SUM(quantity)>0
+                        THEN SUM(total_price)/SUM(quantity)
+                        ELSE 0 END as avg_price
             FROM procurement
+            WHERE quantity > 0
             GROUP BY material_name""")
         price_map = {}
         if not proc_prices.empty:
-            price_map = {r['material_name']: float(r['avg_price']) for _,r in proc_prices.iterrows()}
+            price_map = {r['material_name']: float(r['avg_price'] or 0) for _,r in proc_prices.iterrows()}
         inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
@@ -4069,16 +4073,18 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                 {"w":int(wid2),"m":month_str3})['t'].iloc[0])
 
             # عرض الملخص - راتب غير قابل للتعديل
-            st.markdown(f"""
-<div style="background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:14px;border-right:4px solid #1E3A8A;">
-  <h4 style="color:#1E3A8A;margin-bottom:10px;">💼 ملخص راتب: {ws3}</h4>
-  <p>📌 الراتب الشهري الأساسي: <b>{base3:,.2f} ريال</b></p>
-  <p>📅 أيام العمل حتى اليوم: <b>{days_worked3} يوم من {days_in_month3}</b></p>
-  <p>💰 المستحق حتى اليوم: <b>{earned3:,.2f} ريال</b></p>
-  <p>➖ السلف المعلقة: <b style="color:#dc2626;">{adv_total3:,.2f} ريال</b></p>
-  <p>✅ الصافي المستحق بعد السلف: <b style="color:#16a34a;">{net_sal3:,.2f} ريال</b></p>
-  {"<p style='color:#d97706;'>⚠️ تم دفع "+f'{paid_this_month:,.2f}'+" ريال هذا الشهر مسبقاً</p>" if paid_this_month > 0 else ""}
-</div>""", unsafe_allow_html=True)
+            sal_summary_df = pd.DataFrame([
+                {"البيان": "📌 الراتب الشهري الأساسي",          "المبلغ (ريال)": round(base3,2)},
+                {"البيان": f"📅 المستحق حتى اليوم ({days_worked3}/{days_in_month3} يوم)", "المبلغ (ريال)": round(earned3,2)},
+                {"البيان": "➖ السلف المعلقة",                   "المبلغ (ريال)": round(adv_total3,2)},
+                {"البيان": "✅ الصافي المستحق",                   "المبلغ (ريال)": round(net_sal3,2)},
+            ])
+            if paid_this_month > 0:
+                sal_summary_df = pd.concat([sal_summary_df, pd.DataFrame([
+                    {"البيان": "⚠️ مدفوع هذا الشهر مسبقاً", "المبلغ (ريال)": round(paid_this_month,2)}
+                ])], ignore_index=True)
+            st.dataframe(sal_summary_df, use_container_width=True, hide_index=True,
+                         column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
 
             if net_sal3 <= 0.5:
                 st.error("⛔ لا يوجد راتب مستحق لهذا العامل الآن — السلف تعادل أو تتجاوز المستحق.")
@@ -4215,7 +4221,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
             did_d = int(wdf_d[wdf_d['name']==sel_d]['id'].iloc[0])
             base_d = float(wdf_d[wdf_d['name']==sel_d]['base_salary'].iloc[0])
             ded_reason = st.selectbox("سبب الخصم:", ["غياب","تأخير","كسر/تلف","مخالفة","أخرى"], key=f"ded_reason_{ddk}")
-            ded_amt = st.number_input("مبلغ الخصم (ريال):", min_value=0.01, value=0.0, key=f"ded_amt_{ddk}")
+            ded_amt = st.number_input("مبلغ الخصم (ريال):", min_value=0.0, value=0.0, key=f"ded_amt_{ddk}")
             ded_note = st.text_input("ملاحظة:", key=f"ded_note_{ddk}")
             if st.button("💸 تسجيل الخصم", type="primary", key=f"ded_btn_{ddk}"):
                 run_write("INSERT INTO worker_deductions(worker_id,amount,reason,deduction_date) VALUES(:w,:a,:r,CURRENT_DATE)",
@@ -4257,10 +4263,15 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                                               key=f"att_{wid_a}_{att_date}",
                                               label_visibility="collapsed")
                 if col_btn.button("✅", key=f"att_save_{wid_a}_{att_date}"):
-                    run_write("""INSERT INTO worker_attendance(worker_id,att_date,status)
-                               VALUES(:w,:d,:s) ON CONFLICT(worker_id,att_date)
-                               DO UPDATE SET status=EXCLUDED.status""",
-                              {"w":wid_a,"d":att_date,"s":new_status})
+                    try:
+                        run_write("""INSERT INTO worker_attendance(worker_id,att_date,status)
+                                   VALUES(:w,:d,:s)
+                                   ON CONFLICT(worker_id,att_date)
+                                   DO UPDATE SET status=EXCLUDED.status""",
+                                  {"w":int(wid_a),"d":str(att_date),"s":str(new_status)})
+                    except Exception:
+                        run_write("UPDATE worker_attendance SET status=:s WHERE worker_id=:w AND att_date=:d",
+                                  {"s":str(new_status),"w":int(wid_a),"d":str(att_date)})
                     st.rerun()
 
             st.markdown("---")
