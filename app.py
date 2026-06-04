@@ -912,33 +912,45 @@ if menu == "📊 لوحة التحكم":
     if not inv_df.empty:
         # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
         # حساب متوسط السعر لكل مادة في المخزن
-        # البيانات القديمة محفوظة بأسماء مختلطة لذلك نستخدم ILIKE للمطابقة
+        # للسجلات المنفردة (مادة واحدة): total_price / quantity
+        # للسجلات المدمجة (مواد متعددة): نقسم على عدد المواد في السجل
         price_map = {}
-        inv_names = [str(r['material_name']) for _,r in inv_df.iterrows()]
-        for mat_name in inv_names:
-            # ابحث عن أي سجل في procurement يحتوي اسم المادة
-            # نأخذ أول كلمة مميزة من الاسم للبحث
-            search_key = mat_name.split('(')[0].strip()[:8]  # أول 8 حروف
-            p_row = run_query(
-                """SELECT CASE WHEN SUM(quantity)>0
-                              THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
-                              ELSE 0 END as avg_price
-                   FROM procurement
-                   WHERE material_name ILIKE :s AND quantity > 0""",
-                {"s": f"%{search_key}%"})
-            if not p_row.empty and float(p_row['avg_price'].iloc[0] or 0) > 0:
-                price_map[mat_name] = float(p_row['avg_price'].iloc[0])
-            else:
-                # fallback: ابحث بالاسم الكامل
-                p_row2 = run_query(
-                    """SELECT CASE WHEN SUM(quantity)>0
-                                  THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
-                                  ELSE 0 END as avg_price
-                       FROM procurement
-                       WHERE material_name ILIKE :s AND quantity > 0""",
-                    {"s": f"%{mat_name[:6]}%"})
-                if not p_row2.empty:
-                    price_map[mat_name] = float(p_row2['avg_price'].iloc[0] or 0)
+        all_proc = run_query(
+            "SELECT material_name, quantity, total_price FROM procurement WHERE quantity > 0 ORDER BY id DESC")
+        if not all_proc.empty:
+            for _,pr in all_proc.iterrows():
+                mat_str = str(pr['material_name'])
+                qty_p   = float(pr['quantity'] or 1)
+                total_p = float(pr['total_price'] or 0)
+                # هل هذا سجل مادة واحدة أم مدمج؟
+                # السجل المنفرد: اسمه يطابق اسم مادة في المخزن
+                # السجل المدمج: يحتوي '/' ويبدأ بـ '['
+                if '/' in mat_str and mat_str.startswith('['):
+                    # سجل مدمج - استخرج قائمة المواد
+                    # الشكل: [رقم] مادة1 / مادة2 / ...
+                    parts_str = mat_str.split(']', 1)[-1].strip() if ']' in mat_str else mat_str
+                    parts = [p.strip() for p in parts_str.split('/') if p.strip()]
+                    n_parts = max(len(parts), 1)
+                    price_per_unit = total_p / qty_p / n_parts if qty_p > 0 else 0
+                    # ربط كل جزء بأقرب مادة في المخزن
+                    inv_names2 = [str(r['material_name']) for _,r in inv_df.iterrows()]
+                    for part in parts:
+                        part_clean = part.strip()[:10].lower()
+                        for inv_mat in inv_names2:
+                            if part_clean[:5] in inv_mat.lower() or inv_mat.lower()[:5] in part_clean:
+                                if inv_mat not in price_map or price_map[inv_mat] == 0:
+                                    price_map[inv_mat] = round(price_per_unit, 2)
+                                break
+                else:
+                    # سجل منفرد - ربط مباشر
+                    unit_price = total_p / qty_p if qty_p > 0 else 0
+                    inv_names2 = [str(r['material_name']) for _,r in inv_df.iterrows()]
+                    for inv_mat in inv_names2:
+                        mat_key = mat_str.split(']', 1)[-1].strip() if ']' in mat_str else mat_str
+                        if mat_key[:8].lower() in inv_mat.lower() or inv_mat[:8].lower() in mat_key.lower():
+                            if inv_mat not in price_map or price_map[inv_mat] == 0:
+                                price_map[inv_mat] = round(unit_price, 2)
+                            break
         inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
@@ -1019,7 +1031,13 @@ if menu == "📊 لوحة التحكم":
         ORDER BY o.order_date DESC""")
     if not adf.empty:
         st.dataframe(adf, use_container_width=True, hide_index=True,
-                     column_config={"القيمة": st.column_config.NumberColumn(format="%.0f ر")})
+                     column_config={
+                         "القيمة":   st.column_config.NumberColumn(format="%.0f ر"),
+                         "الكمية":   st.column_config.NumberColumn(format="%d"),
+                         "الطلبية":  st.column_config.TextColumn(width="large"),
+                         "العميل":   st.column_config.TextColumn(width="large"),
+                         "السعة":    st.column_config.TextColumn(width="medium"),
+                     })
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
 
