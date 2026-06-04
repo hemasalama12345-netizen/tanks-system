@@ -911,17 +911,20 @@ if menu == "📊 لوحة التحكم":
     inv_value = 0.0
     if not inv_df.empty:
         # نحسب متوسط سعر الوحدة لكل مادة من آخر عمليات الشراء
+        # حساب متوسط سعر كل مادة من سجلات الشراء
         proc_prices = run_query("""
             SELECT material_name,
                    CASE WHEN SUM(quantity)>0
-                        THEN SUM(total_price)/SUM(quantity)
+                        THEN ROUND(CAST(SUM(total_price)/SUM(quantity) AS numeric),2)
                         ELSE 0 END as avg_price
             FROM procurement
             WHERE quantity > 0
+              AND material_name NOT LIKE '%[%'
             GROUP BY material_name""")
         price_map = {}
         if not proc_prices.empty:
-            price_map = {r['material_name']: float(r['avg_price'] or 0) for _,r in proc_prices.iterrows()}
+            price_map = {str(r['material_name']): float(r['avg_price'] or 0)
+                         for _,r in proc_prices.iterrows()}
         inv_df['متوسط سعر الوحدة'] = inv_df['material_name'].map(price_map).fillna(0.0)
         inv_df['قيمة المخزون'] = inv_df['quantity'] * inv_df['متوسط سعر الوحدة']
         inv_value = float(inv_df['قيمة المخزون'].sum())
@@ -2637,18 +2640,25 @@ elif menu == "📥 المشتريات والمخزن":
                         avg_up   = float(round(sub / max(n_items, 1), 2))
                         total_fp = float(round(sub, 2))
 
-                        # ---- إدراج سجل واحد يمثل الفاتورة كاملة ----
-                        # نستخدم الأعمدة الموجودة فعلاً في الجدول فقط
-                        ok_inv = run_write(
-                            "INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:mat,:qty,:up,:tp)",
-                            {"sid": int(sup_id),
-                             "mat": mat_summary,
-                             "qty": n_items,
-                             "up":  avg_up,
-                             "tp":  total_fp})
+                        # ---- إدراج سجل لكل مادة منفردة في procurement ----
+                        # هذا يضمن حساب متوسط السعر بشكل صحيح في لوحة التحكم
+                        ok_inv = False
+                        for item in st.session_state.pitems:
+                            item_qty   = float(item['الكمية'])
+                            item_up    = float(item['سعر الوحدة'])
+                            item_total = float(item['الإجمالي'])
+                            if item_qty > 0:
+                                run_write(
+                                    "INSERT INTO procurement(supplier_id,material_name,quantity,unit_price,total_price) VALUES(:sid,:mat,:qty,:up,:tp)",
+                                    {"sid": int(sup_id),
+                                     "mat": str(item['المادة']),
+                                     "qty": item_qty,
+                                     "up":  item_up,
+                                     "tp":  item_total})
+                                ok_inv = True
 
                         if ok_inv:
-                            # تحديث المخزون لكل مادة على حدة (UPSERT — ينشئ الصف لو مش موجود)
+                            # تحديث المخزون لكل مادة
                             for item in st.session_state.pitems:
                                 run_write(
                                     """INSERT INTO inventory(material_name,quantity)
