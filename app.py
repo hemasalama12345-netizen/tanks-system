@@ -900,8 +900,7 @@ if menu == "📊 لوحة التحكم":
         SELECT i.material_name, i.quantity,
                COALESCE(
                  (SELECT AVG(p.unit_price) FROM procurement p
-                  WHERE p.material_name=i.material_name
-                  ORDER BY p.date DESC LIMIT 5),
+                  WHERE p.material_name=i.material_name),
                  0) as avg_price
         FROM inventory i ORDER BY i.material_name""")
     inv_value = 0.0
@@ -931,16 +930,34 @@ if menu == "📊 لوحة التحكم":
 
     # ======= جدول قائمة الدخل =======
     st.markdown("### 📊 قائمة الدخل التفصيلية")
-    income_data = [
-        {"البيان": "➕ إيرادات المبيعات (مع الضريبة)",      "المبلغ (ريال)": f"{total_sales:,.2f}",    "نوع": "إيراد"},
-        {"البيان": "➖ تكلفة المواد الخام المشتراة (مع الضريبة)", "المبلغ (ريال)": f"{raw_mat_vat:,.2f}","نوع": "تكلفة"},
-        {"البيان": "═══ مجمل الربح",                        "المبلغ (ريال)": f"{gross_profit:,.2f}",   "نوع": "نتيجة"},
-        {"البيان": "➖ الرواتب وتكاليف العمالة",             "المبلغ (ريال)": f"{total_sal:,.2f}",      "نوع": "مصروف"},
-        {"البيان": "➖ المصاريف التشغيلية",                  "المبلغ (ريال)": f"{total_exp:,.2f}",      "نوع": "مصروف"},
-        {"البيان": "═══ إجمالي التكاليف والمصاريف",         "المبلغ (ريال)": f"{total_costs:,.2f}",    "نوع": "إجمالي"},
-        {"البيان": "💵 صافي الربح / الخسارة",               "المبلغ (ريال)": f"{net_profit:,.2f}",     "نوع": "صافي"},
-    ]
-    st.dataframe(pd.DataFrame(income_data), use_container_width=True, hide_index=True)
+    # قائمة الدخل كـ HTML مباشرة — أوضح وأجمل
+    def _row(label, val, bold=False, color=""):
+        style = f"font-weight:700;" if bold else ""
+        if color: style += f"color:{color};"
+        return f"""<tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;{style}">{label}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;font-size:14px;{style}">{val:,.2f} ر</td>
+        </tr>"""
+
+    income_html = f"""<table style="width:100%;border-collapse:collapse;font-family:'Cairo',sans-serif;font-size:13px;direction:rtl;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.08)">
+<thead><tr style="background:#1E3A8A;color:#fff">
+  <th style="padding:12px 14px;text-align:right">البيان</th>
+  <th style="padding:12px 14px;text-align:left">المبلغ (ريال)</th>
+</tr></thead>
+<tbody>
+{_row("➕ إيرادات المبيعات (مع الضريبة)", total_sales)}
+{_row("➖ تكلفة المواد الخام (مع الضريبة)", raw_mat_vat)}
+<tr style="background:#eff6ff"><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1E3A8A">═══ مجمل الربح</td>
+<td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;font-size:14px;font-weight:700;color:#1E3A8A">{gross_profit:,.2f} ر</td></tr>
+{_row("➖ الرواتب وتكاليف العمالة", total_sal)}
+{_row("➖ المصاريف التشغيلية", total_exp)}
+{_row("═══ إجمالي التكاليف والمصاريف", total_costs, bold=True)}
+<tr style="background:{'#f0fdf4' if net_profit>=0 else '#fef2f2'}">
+  <td style="padding:12px 14px;font-weight:800;font-size:15px;color:{'#16a34a' if net_profit>=0 else '#dc2626'}">{'💵 صافي الربح' if net_profit>=0 else '🔴 صافي الخسارة'}</td>
+  <td style="padding:12px 14px;text-align:left;font-family:monospace;font-size:16px;font-weight:800;color:{'#16a34a' if net_profit>=0 else '#dc2626'}">{net_profit:,.2f} ر</td>
+</tr>
+</tbody></table>"""
+    st.markdown(income_html, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -981,8 +998,34 @@ if menu == "📊 لوحة التحكم":
         FROM orders o JOIN customers c ON o.customer_id=c.id
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
-    st.dataframe(adf if not adf.empty else pd.DataFrame({"الحالة":["لا توجد طلبيات"]}),
-                 use_container_width=True, hide_index=True)
+    if not adf.empty:
+        # عرض كـ HTML لضمان ظهور كل البيانات
+        rows_html = ""
+        for _,r in adf.iterrows():
+            rows_html += f"""<tr>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#1E3A8A;font-weight:700;">{r['الطلبية']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">{r['العميل']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{r['الاستخدام']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{r['السعة']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(r['الكمية'])}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:700;">{float(r['القيمة']):,.0f} ر</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">
+                <span style="background:#d97706;color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;">{r['الحالة']}</span>
+              </td>
+            </tr>"""
+        st.markdown(f"""<table style="width:100%;border-collapse:collapse;font-family:'Cairo',sans-serif;font-size:13px;direction:rtl;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.08)">
+<thead><tr style="background:#1E3A8A;color:#fff">
+  <th style="padding:10px 12px;text-align:right">رقم الطلبية</th>
+  <th style="padding:10px 12px;text-align:right">العميل</th>
+  <th style="padding:10px 12px;text-align:center">الاستخدام</th>
+  <th style="padding:10px 12px;text-align:center">السعة</th>
+  <th style="padding:10px 12px;text-align:center">الكمية</th>
+  <th style="padding:10px 12px;text-align:center">القيمة</th>
+  <th style="padding:10px 12px;text-align:center">الحالة</th>
+</tr></thead>
+<tbody>{rows_html}</tbody></table>""", unsafe_allow_html=True)
+    else:
+        st.info("لا توجد طلبيات نشطة حالياً")
 
 # ==========================================
 # [2] الطلبيات
