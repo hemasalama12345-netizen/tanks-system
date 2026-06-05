@@ -3759,24 +3759,15 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                                 str(or_d['tank_use']), str(or_d['tank_capacity'] or '—'), str(or_d['tank_type']),
                                 shipped, float(or_d['unit_price']), serials_shipped,
                                 sub_auto, vat_auto, grand_auto, adv_auto, net_auto, today_str_d)
-                            # بطاقة A4 لكل خزان باستخدام QR حقيقي
-                            _labels_pages = []
-                            for _li, _sn in enumerate(serials_shipped):
-                                _lbl = make_tank_label_html(
-                                    sn=_sn,
-                                    order_id=str(oid_d),
-                                    customer_name=str(or_d['trade_name']),
-                                    tank_use=str(or_d['tank_use']),
-                                    tank_capacity=str(or_d['tank_capacity'] or '—'),
-                                    tank_type=str(or_d['tank_type']),
-                                    delivery_date=today_str_d,
-                                    factory_name=FACTORY_NAME,
-                                    factory_address=FACTORY_ADDRESS,
-                                    seq=_li+1, total=len(serials_shipped))
-                                _labels_pages.append(_lbl)
-                            qr_html = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
-<body>{"".join(f'<div class="pg">{p}</div>' for p in _labels_pages)}</body></html>"""
+                            # بطاقة A4 لكل خزان — نفس أسلوب الفواتير
+                            qr_html = make_qr_labels_html(
+                                serials_list=serials_shipped,
+                                tank_use=str(or_d['tank_use']),
+                                tank_capacity=str(or_d['tank_capacity'] or '—'),
+                                tank_type=str(or_d['tank_type']),
+                                order_id=str(oid_d),
+                                customer_name=str(or_d['trade_name']),
+                                today_str=today_str_d)
 
                             # حفظ في session_state لعدم الاختفاء
                             st.session_state['last_do_html']     = do_html
@@ -3872,24 +3863,15 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                 int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
                 sub, vat, grand, adv_d, net, today_str_inv)
 
-            # توليد بطاقات QR للخزانات الخاصة بهذا الأمر
-            _labels_pages2 = []
-            for _li2, _sn2 in enumerate(sn_list_inv):
-                _lbl2 = make_tank_label_html(
-                    sn=_sn2,
-                    order_id=str(dr['order_id']),
-                    customer_name=str(dr['trade_name']),
-                    tank_use=str(dr['tank_use']),
-                    tank_capacity=str(dr['tank_capacity'] or '—'),
-                    tank_type=str(dr['tank_type']),
-                    delivery_date=today_str_inv,
-                    factory_name=FACTORY_NAME,
-                    factory_address=FACTORY_ADDRESS,
-                    seq=_li2+1, total=len(sn_list_inv))
-                _labels_pages2.append(_lbl2)
-            qr_html2 = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
-<body>{"".join(f'<div class="pg">{p}</div>' for p in _labels_pages2)}</body></html>""" if _labels_pages2 else None
+            # توليد بطاقات QR للخزانات الخاصة بهذا الأمر — نفس أسلوب الفواتير
+            qr_html2 = make_qr_labels_html(
+                serials_list=sn_list_inv,
+                tank_use=str(dr['tank_use']),
+                tank_capacity=str(dr['tank_capacity'] or '—'),
+                tank_type=str(dr['tank_type']),
+                order_id=str(dr['order_id']),
+                customer_name=str(dr['trade_name']),
+                today_str=today_str_inv) if sn_list_inv else None
 
             col_b1, col_b2, col_b3 = st.columns(3)
             # مفتاح فريد لكل أمر تسليم — يضمن طباعة الفاتورة الصحيحة
@@ -4279,25 +4261,30 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-ali
                             # إصلاح: لو ما في أرقام تسلسلية نولد بديلة مرتبطة بأمر التسليم
                             _sn_list_q = _sn_q['serial_number'].tolist() if not _sn_q.empty else [f"SUBUL-SN-{_did_q}-{i}" for i in range(1, _qty_q+1)]
 
-                            for _li_q, _sn_val in enumerate(_sn_list_q):
-                                _page = make_tank_label_html(
-                                    sn=_sn_val,
-                                    order_id=_oid_q,
-                                    customer_name=_cust_q,
-                                    tank_use=_use_q,
-                                    tank_capacity=_cap_q,
-                                    tank_type=_typ_q,
-                                    delivery_date=_date_q,
-                                    factory_name=FACTORY_NAME,
-                                    factory_address=FACTORY_ADDRESS,
-                                    seq=_li_q+1, total=len(_sn_list_q))
-                                _all_pages.append(_page)
-                                _total_cards += 1
+                            # نفس أسلوب الفواتير تماماً
+                            _batch = make_qr_labels_html(
+                                serials_list=_sn_list_q,
+                                tank_use=_use_q,
+                                tank_capacity=_cap_q,
+                                tank_type=_typ_q,
+                                order_id=_oid_q,
+                                customer_name=_cust_q,
+                                today_str=_date_q)
+                            _all_pages.append(_batch)
+                            _total_cards += len(_sn_list_q)
 
                     if _all_pages:
-                        _qr_reprint_html = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
-<body>{"".join(f'<div class="pg">{p}</div>' for p in _all_pages)}</body></html>"""
+                        # دمج كل الـ HTML في ملف واحد — كل صفحة A4 مستقلة
+                        import re as _re
+                        _combined_body = ""
+                        for _h in _all_pages:
+                            _m = _re.search(r'<body>(.*?)</body>', _h, _re.DOTALL)
+                            if _m: _combined_body += _m.group(1)
+                        # نأخذ CSS من أول ملف
+                        _css_match = _re.search(r'<style>(.*?)</style>', _all_pages[0], _re.DOTALL)
+                        _css = _css_match.group(1) if _css_match else ""
+                        _qr_reprint_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>{_css}</style></head><body>{_combined_body}</body></html>"""
                         st.success(f"✅ تم توليد {_total_cards} بطاقة جاهزة للطباعة!")
                         _fname = f"QR_Reprint_{qr_ds}_{qr_de}.html"
                         st.download_button(
