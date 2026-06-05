@@ -5180,12 +5180,12 @@ tr:nth-child(even){{background:#f8fafc;}}
 <thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
 <tbody>{pr_rows_html}
 <tr class="total-row"><td colspan="3">الإجمالي</td>
-<td>{pr_df["الراتب الأساسي"].sum():,.2f}</td><td>—</td><td>{int(pr_df["غياب بدون عذر"].sum())}</td>
-<td>{pr_df["مستحق الشهر"].sum():,.2f}</td><td>{pr_df["مرحّل من قبل"].sum():,.2f}</td>
+<td>{total_base:,.2f}</td><td>—</td><td>{int(pr_df["غياب بدون عذر"].sum())}</td>
+<td>{total_earned:,.2f}</td><td style="color:#2563eb">{total_carried:,.2f}</td>
 <td style="color:#dc2626">{pr_df["سلف معلقة"].sum():,.2f}</td>
 <td style="color:#dc2626">{pr_df["خصومات"].sum():,.2f}</td>
 <td>{pr_df["مدفوع هذا الشهر"].sum():,.2f}</td>
-<td style="color:#16a34a">{pr_df["الصافي المستحق"].sum():,.2f}</td>
+<td style="color:#16a34a;font-size:13px">{total_net:,.2f}</td>
 </tr></tbody></table>
 <div class="sig">
   <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">مدير الموارد البشرية</div></div>
