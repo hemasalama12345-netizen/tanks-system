@@ -219,10 +219,11 @@ def run_write(query, params=None):
         st.error(f"خطأ: {e}")
         return False
 
-FACTORY_NAME = "شركة مصنع سُبُل الريادة"
+FACTORY_NAME = "مصنع ركن القوالب"
 FACTORY_ADDRESS = "الرياض - مدينة الخرج"
 FACTORY_CR = "—"
 FACTORY_TAX = "—"
+FACTORY_LOGO_B64 = ""  # يتم تحديثه من واجهة الإعدادات
 
 raw_materials_list = [
     "راتنج كميائي صنف اول للديزل",
@@ -960,6 +961,35 @@ menu = st.sidebar.radio("انتقل إلى:", [
 # [1] لوحة التحكم
 # ==========================================
 if menu == "📊 لوحة التحكم":
+    # ============ رفع لوجو المصنع ============
+    with st.expander("🖼️ إعدادات لوجو المصنع", expanded=False):
+        if 'factory_logo_b64' not in st.session_state:
+            st.session_state.factory_logo_b64 = ''
+        col_logo1, col_logo2 = st.columns([2,1])
+        with col_logo1:
+            uploaded_logo = st.file_uploader(
+                "ارفع لوجو المصنع (PNG أو JPG) — يظهر في الفواتير وأوامر التسليم فقط",
+                type=["png","jpg","jpeg"],
+                key="logo_uploader"
+            )
+            if uploaded_logo is not None:
+                import base64 as _b64mod
+                logo_bytes = uploaded_logo.read()
+                st.session_state.factory_logo_b64 = _b64mod.b64encode(logo_bytes).decode('utf-8')
+                st.success("✅ تم رفع اللوجو بنجاح! سيظهر في الفواتير وأوامر التسليم")
+        with col_logo2:
+            if st.session_state.factory_logo_b64:
+                st.image(
+                    f"data:image/png;base64,{st.session_state.factory_logo_b64}",
+                    caption="اللوجو الحالي",
+                    width=120
+                )
+                if st.button("🗑️ حذف اللوجو", key="del_logo"):
+                    st.session_state.factory_logo_b64 = ''
+                    st.rerun()
+            else:
+                st.info("لا يوجد لوجو — سيظهر 🏭 بدلاً منه")
+    st.markdown("---")
     st.subheader("📈 لوحة التحكم — التقرير المالي")
     c1,c2 = st.columns(2)
     d_start = c1.date_input("من:", datetime.date.today()-datetime.timedelta(days=30))
@@ -1158,7 +1188,7 @@ elif menu == "📦 الطلبيات":
                 qc1,qc2 = st.columns(2)
                 qcn = qc1.text_input("اسم العميل التجاري:*")
                 qcc = qc2.text_input("رقم السجل:")
-                qct = st.text_input("الرقم الضريبي:")
+                qct = st.text_input("الرقم الضريبي:", key="order_tax_num")
                 if st.form_submit_button("✅ حفظ العميل"):
                     if qcn:
                         if run_write("INSERT INTO customers(trade_name,cr_number,tax_number) VALUES(:t,:c,:tx) ON CONFLICT(trade_name) DO NOTHING",{"t":qcn,"c":qcc,"tx":qct}):
@@ -2687,9 +2717,9 @@ elif menu == "📥 المشتريات والمخزن":
 
     with tabs[0]:
         with st.form("sf", clear_on_submit=True):
-            s1 = st.text_input("اسم المورد الأصلي:*")
-            s2 = st.text_input("الاسم التجاري:")
-            s3 = st.text_input("رقم السجل:")
+            s1 = st.text_input("اسم المورد الأصلي:*", key="sup_orig_name")
+            s2 = st.text_input("الاسم التجاري:", key="sup_trade_name")
+            s3 = st.text_input("رقم السجل:", key="sup_cr_num")
             if st.form_submit_button("✅ حفظ"):
                 if s1:
                     if run_write("INSERT INTO suppliers(original_name,trade_name,cr_number) VALUES(:o,:t,:c) ON CONFLICT(original_name) DO NOTHING",{"o":s1,"t":s2,"c":s3}):
@@ -3289,6 +3319,12 @@ elif menu == "💰 الشحن والفواتير":
             f"لوحة السيارة: {car_plate}"
         )
         _qr_do_b64 = make_qr_b64(qr_do_data, color=(30,58,138), module_size=7)
+        # لوجو المصنع — يظهر في أمر التسليم فقط
+        _logo_b64_do = st.session_state.get('factory_logo_b64', '')
+        if _logo_b64_do:
+            _logo_tag_do = f'<img src="data:image/png;base64,{_logo_b64_do}" style="height:60px;max-width:180px;object-fit:contain;margin-bottom:6px;" alt="logo">'
+        else:
+            _logo_tag_do = '<div style="font-size:32px;margin-bottom:6px;">🏭</div>'
         _tpl_do = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -3327,7 +3363,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 <body>
 <div class="hdr">
   <div class="hdr-left">
-    <div style="font-size:32px;margin-bottom:6px;">🏭</div>
+    {_logo_tag_do}
     <h1>{FACTORY_NAME}</h1>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
@@ -3401,6 +3437,12 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
             f"الرقم الضريبي: {tax_number}"
         )
         _qr_inv_b64  = make_qr_b64(qr_inv_data, color=(220,38,38), module_size=7)
+        # لوجو المصنع — يظهر في الفاتورة فقط
+        _logo_b64_inv = st.session_state.get('factory_logo_b64', '')
+        if _logo_b64_inv:
+            _logo_tag_inv = f'<img src="data:image/png;base64,{_logo_b64_inv}" style="height:60px;max-width:180px;object-fit:contain;margin-bottom:6px;" alt="logo">'
+        else:
+            _logo_tag_inv = '<div style="font-size:32px;margin-bottom:6px;">🏭</div>'
         _tpl_inv = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -3440,7 +3482,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 <body>
 <div class="hdr">
   <div class="hdr-left">
-    <div style="font-size:32px;margin-bottom:6px;">🏭</div>
+    {_logo_tag_inv}
     <h1>{FACTORY_NAME}</h1>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
@@ -4337,7 +4379,7 @@ elif menu == "👷 العمال والأجور":
             c3w,c4w = st.columns(2)
             ws  = c3w.date_input("تاريخ الالتحاق:")
             w_sal = c4w.number_input("الراتب الشهري الأساسي (ريال):*", min_value=0.0, value=0.0)
-            w_job = st.text_input("المسمى الوظيفي:")
+            w_job = st.text_input("المسمى الوظيفي:", key="w_job_title")
             if st.form_submit_button("✅ حفظ العامل"):
                 if wn and wi and w_sal > 0:
                     ok_w = run_write(
@@ -5037,7 +5079,7 @@ elif menu == "🔍 الاستعلام المتقدم":
             st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}),use_container_width=True)
             if not df.empty: st.download_button("⬇️ تنزيل",df_to_csv(df),"proc.csv","text/csv")
     elif qt=="خزان بالرقم المسلسل":
-        sn = st.text_input("الرقم المسلسل:")
+        sn = st.text_input("الرقم المسلسل:", key="query_sn")
         if st.button("🔍 بحث") and sn:
             df = run_query("SELECT serial_number,order_id,prod_date,supervisor FROM production_tanks WHERE serial_number ILIKE :s",{"s":f"%{sn}%"})
             st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}),use_container_width=True)
