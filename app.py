@@ -4451,7 +4451,7 @@ elif menu == "👷 العمال والأجور":
 
             ca,cb,cc = st.columns(3)
             ca.metric("الراتب الشهري", f"{base_sal:,.2f} ر")
-            cb.metric(f"المستحق حتى اليوم ({days_worked}/{days_in_month})", f"{earned_today:,.2f} ر")
+            cb.metric(f"المستحق حتى اليوم ({days_worked} يوم)", f"{earned_today:,.2f} ر")
             cc.metric("السلف المعلقة", f"{adv_this_month:,.2f} ر")
 
             if remaining <= 0:
