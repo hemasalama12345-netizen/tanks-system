@@ -378,7 +378,13 @@ def generate_invoice_number(delivery_id):
     next_id = int(max_id['m'].iloc[0]) + 1 if not max_id.empty else 1
     return f"INV-{datetime.date.today().year}-{next_id:06d}"
 
-st.set_page_config(page_title="مصنع سُبُل الريادة - ERP v7.0", layout="wide")
+st.set_page_config(page_title="مصنع ركن القوالب - ERP v7.0", layout="wide")
+# توسيط كل النصوص في جداول Streamlit
+st.markdown("""<style>
+div[data-testid="stDataFrame"] td { text-align: center !important; vertical-align: middle !important; }
+div[data-testid="stDataFrame"] th { text-align: center !important; }
+div[data-testid="stDataFrame"] div[data-testid="glideDataEditor"] .dvn-scroller { direction: rtl; }
+</style>""", unsafe_allow_html=True)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -4744,7 +4750,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     except Exception:
                         run_write("UPDATE worker_attendance SET status=:s WHERE worker_id=:w AND att_date=:d",
                                   {"s":str(new_status),"w":int(wid_a),"d":str(att_date)})
-                    st.rerun()
+                    st.success(f"✅ تم حفظ حضور {wr['name']}")
 
             st.markdown("---")
             # تقرير الحضور للفترة
@@ -4765,25 +4771,236 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                 {"s":att_from,"e":att_to})
             if not att_rep.empty:
                 st.dataframe(att_rep, use_container_width=True, hide_index=True)
+                # زر تقرير HTML احترافي
+                if st.button("🖨️ طباعة تقرير الحضور (HTML)", key="att_print_btn"):
+                    today_rpt = datetime.date.today().strftime("%Y/%m/%d")
+                    rows_html = ""
+                    for _,r in att_rep.iterrows():
+                        total = int(r.get('إجمالي_مسجل',0))
+                        pct = round(int(r.get('حضور',0))/total*100) if total>0 else 0
+                        rows_html += f"""<tr>
+                          <td>{r['name']}</td>
+                          <td class="center g">{int(r.get('حضور',0))}</td>
+                          <td class="center r">{int(r.get('غياب',0))}</td>
+                          <td class="center y">{int(r.get('إجازة',0))}</td>
+                          <td class="center b">{int(r.get('مأمورية',0))}</td>
+                          <td class="center">{total}</td>
+                          <td class="center"><span class="pct">{pct}%</span></td>
+                        </tr>"""
+                    att_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Cairo',sans-serif;background:#fff;color:#1e293b;padding:28px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}}
+.hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+.period{{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;color:#1E3A8A;}}
+table{{width:100%;border-collapse:collapse;margin-top:10px;}}
+th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:13px;}}
+th:first-child{{text-align:right;}}
+td{{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
+td.center{{text-align:center;font-weight:700;}}
+tr:nth-child(even){{background:#f8fafc;}}
+tr:hover{{background:#eff6ff;}}
+.g{{color:#16a34a;}} .r{{color:#dc2626;}} .y{{color:#d97706;}} .b{{color:#2563eb;}}
+.pct{{background:#dbeafe;color:#1E3A8A;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:800;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:10px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div>
+    <h1>🏭 {FACTORY_NAME}</h1>
+    <p>{FACTORY_ADDRESS}</p>
+    <p>تقرير الحضور والغياب</p>
+  </div>
+  <div class="period">الفترة: {att_from} → {att_to}</div>
+</div>
+<table>
+<thead><tr>
+  <th>اسم العامل</th><th>حاضر</th><th>غائب</th><th>إجازة</th><th>مأمورية</th><th>إجمالي مسجل</th><th>نسبة الحضور</th>
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+<div class="footer">
+  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+  <span>نظام ERP v7.0 | طُبع: {today_rpt}</span>
+</div>
+</body></html>"""
+                    st.download_button("⬇️ تنزيل تقرير الحضور HTML",
+                        att_html.encode('utf-8'),
+                        f"Attendance_{att_from}_{att_to}.html",
+                        "text/html; charset=utf-8", key="dl_att_html")
             else:
                 st.info("لا توجد بيانات حضور.")
 
     # ===== تبويب 6 (الرواتب) = تبويب 3 القديم =====
     # تبويب 7 (سجل العمال) = تبويب 4 القديم
 
+    # ===== تبويب 5b: تقرير رواتب HTML =====
+    with tabs[5]:
+        st.markdown("#### 📊 تقرير مسير الرواتب")
+        sr1,sr2 = st.columns(2)
+        sal_rpt_from = sr1.date_input("من:", datetime.date.today().replace(day=1), key="sal_rpt_from")
+        sal_rpt_to   = sr2.date_input("إلى:", datetime.date.today(), key="sal_rpt_to")
+
+        # جلب كل العمال مع ملخص رواتبهم في الفترة
+        all_workers_sal = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title FROM workers ORDER BY name")
+        if all_workers_sal.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            sal_rows_data = []
+            for _,wr5 in all_workers_sal.iterrows():
+                wid5 = int(wr5['id'])
+                # السلف في الفترة
+                adv5 = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND created_at BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
+                # الخصومات في الفترة
+                ded5 = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w AND deduction_date BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
+                # الرواتب المدفوعة
+                paid5 = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND payout_date BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
+                base5 = float(wr5['base_salary'])
+                net5  = max(0, base5 - adv5 - ded5)
+                sal_rows_data.append({"الاسم":wr5['name'],"الوظيفة":wr5['job_title'],"الراتب الأساسي":base5,"السلف":adv5,"الخصومات":ded5,"الصافي المستحق":net5,"المدفوع":paid5})
+
+            sal_df5 = pd.DataFrame(sal_rows_data)
+            st.dataframe(sal_df5, use_container_width=True, hide_index=True,
+                         column_config={c: st.column_config.NumberColumn(format="%.2f ر") for c in ["الراتب الأساسي","السلف","الخصومات","الصافي المستحق","المدفوع"]})
+
+            if st.button("🖨️ طباعة مسير الرواتب (HTML)", key="sal_rpt_btn"):
+                today_sr = datetime.date.today().strftime("%Y/%m/%d")
+                sal_rows_html = ""
+                for i,r5 in sal_df5.iterrows():
+                    sal_rows_html += f"""<tr>
+                      <td>{int(i)+1}</td><td>{r5["الاسم"]}</td><td class="c">{r5["الوظيفة"]}</td>
+                      <td class="c num">{r5["الراتب الأساسي"]:,.2f}</td>
+                      <td class="c r num">{r5["السلف"]:,.2f}</td>
+                      <td class="c r num">{r5["الخصومات"]:,.2f}</td>
+                      <td class="c g num">{r5["الصافي المستحق"]:,.2f}</td>
+                      <td class="c b num">{r5["المدفوع"]:,.2f}</td>
+                    </tr>"""
+                sal_rpt_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+.period{{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;color:#1E3A8A;text-align:center;}}
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
+.sum-box{{background:#f8fafc;border-radius:8px;padding:12px;border-right:4px solid #1E3A8A;text-align:center;}}
+.sum-box .lbl{{font-size:11px;color:#64748b;}} .sum-box .val{{font-size:18px;font-weight:800;color:#1E3A8A;}}
+table{{width:100%;border-collapse:collapse;font-size:12px;}}
+th{{background:#1E3A8A;color:#fff;padding:10px 8px;text-align:center;}}
+td{{padding:9px 8px;border-bottom:1px solid #e2e8f0;text-align:right;}}
+td.c{{text-align:center;}} td.num{{font-family:monospace;font-size:13px;font-weight:700;}}
+td.g{{color:#16a34a;}} td.r{{color:#dc2626;}} td.b{{color:#2563eb;}}
+tr:nth-child(even){{background:#f8fafc;}}
+.total-row{{background:#dbeafe;font-weight:800;font-size:13px;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:12px;}}
+.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;height:32px;margin-bottom:6px;}}
+.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
+.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:10px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>مسير الرواتب الرسمي</p></div>
+  <div><div class="period">الفترة: {sal_rpt_from} → {sal_rpt_to}</div><p style="text-align:center;margin-top:6px;font-size:11px;color:#64748b;">طُبع: {today_sr}</p></div>
+</div>
+<div class="summary">
+  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{sal_df5["الراتب الأساسي"].sum():,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات</div><div class="val" style="color:#dc2626;">{(sal_df5["السلف"]+sal_df5["الخصومات"]).sum():,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي الصافي المستحق</div><div class="val" style="color:#16a34a;">{sal_df5["الصافي المستحق"].sum():,.2f} ر</div></div>
+</div>
+<table>
+<thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب الأساسي</th><th>السلف</th><th>الخصومات</th><th>الصافي المستحق</th><th>المدفوع</th></tr></thead>
+<tbody>{sal_rows_html}
+<tr class="total-row"><td colspan="3" style="text-align:center;">الإجمالي</td>
+  <td class="c">{sal_df5["الراتب الأساسي"].sum():,.2f}</td>
+  <td class="c r">{sal_df5["السلف"].sum():,.2f}</td>
+  <td class="c r">{sal_df5["الخصومات"].sum():,.2f}</td>
+  <td class="c g">{sal_df5["الصافي المستحق"].sum():,.2f}</td>
+  <td class="c b">{sal_df5["المدفوع"].sum():,.2f}</td>
+</tr></tbody></table>
+<div class="sig-area">
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">مدير الموارد البشرية</div><div class="sig-en">HR Manager</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">المدير المالي</div><div class="sig-en">Finance Manager</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">المدير العام</div><div class="sig-en">General Manager</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_sr}</span></div>
+</body></html>"""
+                st.download_button("⬇️ تنزيل مسير الرواتب HTML",
+                    sal_rpt_html.encode("utf-8"),
+                    f"Payroll_{sal_rpt_from}_{sal_rpt_to}.html",
+                    "text/html; charset=utf-8", key="dl_sal_rpt_html")
+
     # ===== تبويب 7: سجل العمال =====
     with tabs[6]:
         st.markdown("#### سجل العمال والمدفوعات")
-        wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title,COALESCE(start_date,'—') as start_date FROM workers ORDER BY name")
         if wdf4.empty:
             st.info("لا يوجد عمال.")
         else:
-            sw = st.selectbox("اختر العامل:", ["الكل"] + wdf4['name'].tolist(), key="wrk_search")
+            sw = st.selectbox("اختر العامل:", ["الكل"] + wdf4["name"].tolist(), key="wrk_search")
             if sw == "الكل":
-                st.dataframe(wdf4.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','base_salary':'الراتب الأساسي'}),
-                             use_container_width=True, hide_index=True)
+                _wdf4_display = wdf4.drop(columns=["id"]).rename(columns={
+                    "name":"الاسم","iqama_id":"رقم الإقامة",
+                    "base_salary":"الراتب الأساسي","job_title":"الوظيفة",
+                    "start_date":"تاريخ الالتحاق"
+                })
+                st.dataframe(_wdf4_display, use_container_width=True, hide_index=True,
+                             column_config={"الراتب الأساسي": st.column_config.NumberColumn(format="%.2f ر")})
+                # طباعة سجل كل العمال HTML
+                if st.button("🖨️ طباعة سجل العمال (HTML)", key="print_workers_btn"):
+                    today_wr = datetime.date.today().strftime("%Y/%m/%d")
+                    wrows_html = ""
+                    for i,(_,r) in enumerate(wdf4.iterrows(),1):
+                        wrows_html += f"""<tr>
+                          <td class="center">{i}</td>
+                          <td>{r["name"]}</td>
+                          <td class="center">{r["iqama_id"]}</td>
+                          <td class="center">{r["job_title"]}</td>
+                          <td class="center">{r["start_date"]}</td>
+                          <td class="center">{float(r["base_salary"]):,.2f} ريال</td>
+                        </tr>"""
+                    workers_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}}
+.hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+table{{width:100%;border-collapse:collapse;}}
+th{{background:#1E3A8A;color:#fff;padding:11px 12px;text-align:center;font-size:13px;}}
+td{{padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
+td.center{{text-align:center;}}
+tr:nth-child(even){{background:#f8fafc;}}
+tr:hover{{background:#eff6ff;}}
+.total-row{{background:#dbeafe;font-weight:800;}}
+.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+@media print{{body{{padding:10px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>سجل العمال الرسمي</p></div>
+  <div><div class="badge">إجمالي العمال: {len(wdf4)}</div><p style="text-align:center;margin-top:6px;font-size:11px;color:#64748b;">تاريخ الطباعة: {today_wr}</p></div>
+</div>
+<table>
+<thead><tr><th>#</th><th>الاسم الكامل</th><th>رقم الإقامة</th><th>المسمى الوظيفي</th><th>تاريخ الالتحاق</th><th>الراتب الأساسي</th></tr></thead>
+<tbody>{wrows_html}
+<tr class="total-row"><td colspan="5" class="center">الإجمالي</td><td class="center">{float(wdf4["base_salary"].sum()):,.2f} ريال</td></tr>
+</tbody></table>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_wr}</span></div>
+</body></html>"""
+                    st.download_button("⬇️ تنزيل سجل العمال HTML",
+                        workers_html.encode("utf-8"),
+                        f"Workers_Register_{today_wr.replace('/','_')}.html",
+                        "text/html; charset=utf-8", key="dl_workers_html")
             else:
-                wid4 = int(wdf4[wdf4['name']==sw]['id'].iloc[0])
+                wid4 = int(wdf4[wdf4["name"]==sw]["id"].iloc[0])
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.markdown("**السلف:**")
