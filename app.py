@@ -5113,11 +5113,20 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                 })
 
             pr_df = pd.DataFrame(pr_rows)
-            # عرض ملخص سريع
-            c1p,c2p,c3p = st.columns(3)
-            c1p.metric("إجمالي الرواتب الأساسية", f"{pr_df['الراتب الأساسي'].sum():,.2f} ر")
-            c2p.metric("إجمالي السلف والخصومات",  f"{(pr_df['سلف معلقة']+pr_df['خصومات']).sum():,.2f} ر")
-            c3p.metric("إجمالي الصافي المستحق",   f"{pr_df['الصافي المستحق'].sum():,.2f} ر")
+            # الإجماليات الصحيحة
+            total_base      = pr_df['الراتب الأساسي'].sum()
+            total_earned    = pr_df['مستحق الشهر'].sum()
+            total_carried   = pr_df['مرحّل من قبل'].sum()
+            total_grand_due = pr_df['الإجمالي'].sum()          # مستحق الشهر + مرحّل
+            total_deducted  = (pr_df['سلف معلقة'] + pr_df['خصومات'] + pr_df['مدفوع هذا الشهر']).sum()
+            total_net       = pr_df['الصافي المستحق'].sum()    # الباقي الصافي
+
+            c1p,c2p,c3p,c4p = st.columns(4)
+            c1p.metric("إجمالي الرواتب الأساسية",        f"{total_base:,.2f} ر")
+            c2p.metric("إجمالي المستحق (شهر + مرحّل)",   f"{total_grand_due:,.2f} ر",
+                       delta=f"مرحّل: {total_carried:,.2f} ر" if total_carried>0 else None)
+            c3p.metric("إجمالي السلف والخصومات والمدفوع", f"{total_deducted:,.2f} ر")
+            c4p.metric("✅ إجمالي الصافي المستحق الآن",    f"{total_net:,.2f} ر")
 
             # جدول HTML احترافي
             pr_rows_html = ""
@@ -5144,7 +5153,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:20px;font-size:11px;}}
 .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
 .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}}
+.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}}
 .sum-box{{background:#f8fafc;border-radius:8px;padding:10px;border-right:4px solid #1E3A8A;text-align:center;}}
 .sum-box .lbl{{font-size:10px;color:#64748b;}} .sum-box .val{{font-size:16px;font-weight:800;color:#1E3A8A;}}
 table{{width:100%;border-collapse:collapse;}}
@@ -5162,9 +5171,10 @@ tr:nth-child(even){{background:#f8fafc;}}
   <div style="text-align:center"><div style="background:#1E3A8A;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;">{today_pr.strftime("%Y-%m")}</div><p style="font-size:10px;color:#64748b;margin-top:5px;">طُبع: {today_pr_str}</p></div>
 </div>
 <div class="summary">
-  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{pr_df["الراتب الأساسي"].sum():,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات</div><div class="val" style="color:#dc2626">{(pr_df["سلف معلقة"]+pr_df["خصومات"]).sum():,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي الصافي المستحق</div><div class="val" style="color:#16a34a">{pr_df["الصافي المستحق"].sum():,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{total_base:,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي المستحق (شهر + مرحّل)</div><div class="val">{total_grand_due:,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات والمدفوع</div><div class="val" style="color:#dc2626">{total_deducted:,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">✅ إجمالي الصافي المستحق الآن</div><div class="val" style="color:#16a34a">{total_net:,.2f} ر</div></div>
 </div>
 <table>
 <thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
