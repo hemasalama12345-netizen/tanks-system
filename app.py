@@ -4406,7 +4406,7 @@ elif menu == "👷 العمال والأجور":
                   ('sal_rcpt',None),('sal_ready',False)]:
         if _k not in st.session_state: st.session_state[_k]=_v
 
-    tabs = st.tabs(["👤 إضافة عامل","✏️ تعديل/حذف","💵 سلفة","💸 خصم","📅 حضور وانصراف","💰 الرواتب","📋 سجل العمال"])
+    tabs = st.tabs(["👤 إضافة عامل","✏️ تعديل/حذف","💵 سلفة","💸 خصم","📅 حضور وانصراف","💰 الرواتب","📊 كشف الرواتب","📋 سجل العمال"])
 
     # ===== تبويب 1: إضافة عامل =====
     with tabs[0]:
@@ -4815,6 +4815,25 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
   <span>نظام ERP v7.0 | طُبع: {today_rpt}</span>
 </div>
 </body></html>"""
+                    # إضافة تفاصيل الغياب لكل عامل
+                    detail_html = ""
+                    for _, r in att_rep.iterrows():
+                        if int(r.get('غياب_بدون_عذر',0)) + int(r.get('غياب_بعذر',0)) > 0:
+                            absences = run_query("""
+                                SELECT att_date, excuse_type FROM worker_attendance a
+                                JOIN workers w ON w.id=a.worker_id
+                                WHERE w.name=:n AND a.status='غائب'
+                                AND a.att_date BETWEEN :s AND :e
+                                ORDER BY att_date""",
+                                {"n": r['name'], "s": str(att_from), "e": str(att_to)})
+                            if not absences.empty:
+                                detail_html += f'<tr style="background:#fff3cd"><td colspan="8" style="padding:4px 12px;font-weight:700;color:#92400e;">📋 تفاصيل غياب {r["name"]}:</td></tr>'
+                                for _,ab in absences.iterrows():
+                                    exc = str(ab['excuse_type']) if ab['excuse_type'] else 'بدون عذر'
+                                    color = "#dc2626" if exc == "بدون عذر" else "#d97706"
+                                    detail_html += f'<tr><td></td><td class="center" colspan="2" style="color:{color};font-size:11px;">📅 {ab["att_date"]} — {exc}</td><td colspan="5"></td></tr>'
+
+                    att_html = att_html.replace('<div class="footer">', detail_html + '<div class="footer">')
                     st.download_button("⬇️ تنزيل تقرير الحضور HTML",
                         att_html.encode('utf-8'),
                         f"Attendance_{att_from}_{att_to}.html",
@@ -4906,11 +4925,19 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
                     {"البيان": "⚠️ مدفوع هذا الشهر مسبقاً", "المبلغ (ريال)": round(paid_this_month, 2)}
                 ])], ignore_index=True)
 
-            st.dataframe(sal_summary_df, use_container_width=True, hide_index=True,
-                         column_config={
-                             "البيان":       st.column_config.TextColumn(width="large"),
-                             "المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر", width="medium"),
-                         })
+            # عرض الجدول بـ HTML مباشر لضمان التوسيط الصحيح
+            rows_html_sal = ""
+            for _, row in sal_summary_df.iterrows():
+                val = row["المبلغ (ريال)"]
+                is_total = "💰" in str(row["البيان"])
+                style = "font-weight:800;background:#f0fdf4;color:#16a34a;" if is_total else ""
+                rows_html_sal += f'<tr style="{style}"><td style="text-align:right;padding:8px 14px;border-bottom:1px solid #e2e8f0;">{row["البيان"]}</td><td style="text-align:center;padding:8px 14px;border-bottom:1px solid #e2e8f0;font-weight:700;font-family:monospace;">{val:,.2f} ر</td></tr>'
+            st.markdown(f"""<div dir="rtl"><table style="width:100%;border-collapse:collapse;font-family:Cairo,sans-serif;font-size:14px;">
+<thead><tr style="background:#1E3A8A;color:#fff;">
+<th style="text-align:right;padding:10px 14px;">البيان</th>
+<th style="text-align:center;padding:10px 14px;">المبلغ (ريال)</th>
+</tr></thead><tbody>{rows_html_sal}</tbody></table></div>""", unsafe_allow_html=True)
+            st.markdown("")
 
             if net_sal3 <= 0.5:
                 st.error("⛔ لا يوجد راتب مستحق — السلف والخصومات تعادل أو تتجاوز المستحق.")
@@ -5014,8 +5041,156 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.rerun()
 
 
-    # ===== تبويب 7: سجل العمال =====
+    # ===== تبويب 6b: كشف الرواتب =====
     with tabs[6]:
+        st.markdown("#### 📊 كشف الرواتب الشامل")
+        today_pr = datetime.date.today()
+        month_start_pr = today_pr.replace(day=1)
+
+        all_w_pr = run_query("""SELECT id,name,iqama_id,
+            COALESCE(base_salary,0) as base_salary,
+            COALESCE(job_title,'—') as job_title,
+            COALESCE(start_date,CURRENT_DATE) as start_date
+            FROM workers ORDER BY name""")
+
+        if all_w_pr.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            pr_rows = []
+            for _,wr_pr in all_w_pr.iterrows():
+                wid_pr   = int(wr_pr['id'])
+                base_pr  = float(wr_pr['base_salary'])
+                daily_pr = round(base_pr/30, 2)
+
+                sd_pr = wr_pr['start_date']
+                if hasattr(sd_pr,'date'): sd_pr = sd_pr.date()
+                elif isinstance(sd_pr,str):
+                    try: sd_pr = datetime.date.fromisoformat(str(sd_pr))
+                    except: sd_pr = today_pr
+
+                period_pr = max(month_start_pr, sd_pr)
+                days_pr   = max(0,(today_pr-period_pr).days+1)
+
+                absent_pr = int(run_query(
+                    "SELECT COUNT(*) as c FROM worker_attendance WHERE worker_id=:w AND status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='') AND att_date BETWEEN :s AND :e",
+                    {"w":wid_pr,"s":str(period_pr),"e":str(today_pr)})['c'].iloc[0])
+
+                paid_days_pr = max(0, days_pr - absent_pr)
+                earned_pr    = round(daily_pr * paid_days_pr, 2)
+
+                carried_pr = float(run_query(
+                    "SELECT COALESCE(carried_over,0) as c FROM worker_balance WHERE worker_id=:w",
+                    {"w":wid_pr})['c'].iloc[0] if not run_query("SELECT carried_over FROM worker_balance WHERE worker_id=:w",{"w":wid_pr}).empty else 0)
+
+                adv_pr = float(run_query(
+                    "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
+                    {"w":wid_pr})['t'].iloc[0])
+
+                ded_pr = float(run_query(
+                    "SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w AND deduction_date BETWEEN :s AND :e",
+                    {"w":wid_pr,"s":str(period_pr),"e":str(today_pr)})['t'].iloc[0])
+
+                paid_pr = float(run_query(
+                    "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
+                    {"w":wid_pr,"m":today_pr.strftime("%Y-%m")})['t'].iloc[0])
+
+                total_pr = round(earned_pr + carried_pr, 2)
+                net_pr   = max(0, total_pr - adv_pr - ded_pr - paid_pr)
+
+                pr_rows.append({
+                    "الاسم":             wr_pr['name'],
+                    "الوظيفة":           wr_pr['job_title'],
+                    "الراتب الأساسي":    base_pr,
+                    "أيام العمل":        paid_days_pr,
+                    "غياب بدون عذر":     absent_pr,
+                    "مستحق الشهر":       earned_pr,
+                    "مرحّل من قبل":      carried_pr,
+                    "الإجمالي":          total_pr,
+                    "سلف معلقة":         adv_pr,
+                    "خصومات":            ded_pr,
+                    "مدفوع هذا الشهر":   paid_pr,
+                    "الصافي المستحق":    net_pr,
+                })
+
+            pr_df = pd.DataFrame(pr_rows)
+            # عرض ملخص سريع
+            c1p,c2p,c3p = st.columns(3)
+            c1p.metric("إجمالي الرواتب الأساسية", f"{pr_df['الراتب الأساسي'].sum():,.2f} ر")
+            c2p.metric("إجمالي السلف والخصومات",  f"{(pr_df['سلف معلقة']+pr_df['خصومات']).sum():,.2f} ر")
+            c3p.metric("إجمالي الصافي المستحق",   f"{pr_df['الصافي المستحق'].sum():,.2f} ر")
+
+            # جدول HTML احترافي
+            pr_rows_html = ""
+            for i,r in pr_df.iterrows():
+                pr_rows_html += f"""<tr>
+                  <td>{int(i)+1}</td><td style="text-align:right">{r["الاسم"]}</td><td>{r["الوظيفة"]}</td>
+                  <td>{r["الراتب الأساسي"]:,.2f}</td><td>{int(r["أيام العمل"])}</td>
+                  <td style="color:#dc2626">{int(r["غياب بدون عذر"])}</td>
+                  <td>{r["مستحق الشهر"]:,.2f}</td>
+                  <td style="color:#2563eb">{r["مرحّل من قبل"]:,.2f}</td>
+                  <td style="color:#dc2626">{r["سلف معلقة"]:,.2f}</td>
+                  <td style="color:#dc2626">{r["خصومات"]:,.2f}</td>
+                  <td style="color:#dc2626">{r["مدفوع هذا الشهر"]:,.2f}</td>
+                  <td style="color:#16a34a;font-weight:800">{r["الصافي المستحق"]:,.2f}</td>
+                </tr>"""
+
+            if st.button("🖨️ طباعة كشف الرواتب HTML", key="pr_print_btn"):
+                today_pr_str = today_pr.strftime("%Y/%m/%d")
+                pr_html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:20px;font-size:11px;}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}}
+.sum-box{{background:#f8fafc;border-radius:8px;padding:10px;border-right:4px solid #1E3A8A;text-align:center;}}
+.sum-box .lbl{{font-size:10px;color:#64748b;}} .sum-box .val{{font-size:16px;font-weight:800;color:#1E3A8A;}}
+table{{width:100%;border-collapse:collapse;}}
+th{{background:#1E3A8A;color:#fff;padding:8px 6px;text-align:center;font-size:11px;}}
+td{{padding:7px 6px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:11px;}}
+tr:nth-child(even){{background:#f8fafc;}}
+.total-row{{background:#dbeafe;font-weight:800;font-size:12px;}}
+.sig{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+.sb{{text-align:center;flex:1;}} .sl{{border-top:2px solid #1e293b;height:30px;margin-bottom:5px;}}
+.footer{{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+@media print{{body{{padding:8px;font-size:10px;}}}}
+</style></head><body>
+<div class="hdr">
+  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>كشف الرواتب الشهري</p></div>
+  <div style="text-align:center"><div style="background:#1E3A8A;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;">{today_pr.strftime("%Y-%m")}</div><p style="font-size:10px;color:#64748b;margin-top:5px;">طُبع: {today_pr_str}</p></div>
+</div>
+<div class="summary">
+  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{pr_df["الراتب الأساسي"].sum():,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات</div><div class="val" style="color:#dc2626">{(pr_df["سلف معلقة"]+pr_df["خصومات"]).sum():,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي الصافي المستحق</div><div class="val" style="color:#16a34a">{pr_df["الصافي المستحق"].sum():,.2f} ر</div></div>
+</div>
+<table>
+<thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
+<tbody>{pr_rows_html}
+<tr class="total-row"><td colspan="3">الإجمالي</td>
+<td>{pr_df["الراتب الأساسي"].sum():,.2f}</td><td>—</td><td>{int(pr_df["غياب بدون عذر"].sum())}</td>
+<td>{pr_df["مستحق الشهر"].sum():,.2f}</td><td>{pr_df["مرحّل من قبل"].sum():,.2f}</td>
+<td style="color:#dc2626">{pr_df["سلف معلقة"].sum():,.2f}</td>
+<td style="color:#dc2626">{pr_df["خصومات"].sum():,.2f}</td>
+<td>{pr_df["مدفوع هذا الشهر"].sum():,.2f}</td>
+<td style="color:#16a34a">{pr_df["الصافي المستحق"].sum():,.2f}</td>
+</tr></tbody></table>
+<div class="sig">
+  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">مدير الموارد البشرية</div></div>
+  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير المالي</div></div>
+  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير العام</div></div>
+</div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_pr_str}</span></div>
+</body></html>"""
+                st.download_button("⬇️ تنزيل كشف الرواتب HTML",
+                    pr_html.encode("utf-8"),
+                    f"Payroll_{today_pr.strftime('%Y-%m')}.html",
+                    "text/html; charset=utf-8", key="dl_pr_html")
+
+    # ===== تبويب 7: سجل العمال =====
+    with tabs[7]:
         st.markdown("#### سجل العمال والمدفوعات")
         wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title,COALESCE(start_date::text,'—') as start_date FROM workers ORDER BY name")
         if wdf4.empty:
