@@ -289,6 +289,11 @@ def ensure_workers_columns():
             amount FLOAT NOT NULL,
             reason TEXT DEFAULT '',
             deduction_date DATE DEFAULT CURRENT_DATE)""",
+        """CREATE TABLE IF NOT EXISTS worker_balance(
+            id SERIAL PRIMARY KEY,
+            worker_id INTEGER REFERENCES workers(id) UNIQUE,
+            carried_over FLOAT DEFAULT 0,
+            last_updated DATE DEFAULT CURRENT_DATE)""",
     ]:
         try:
             run_write(sql)
@@ -4409,10 +4414,52 @@ elif menu == "👷 العمال والأجور":
 
         # عرض قائمة العمال الحاليين
         st.markdown("#### قائمة العمال")
-        wlist = run_query("SELECT name,iqama_id,start_date,COALESCE(base_salary,0) as الراتب,COALESCE(job_title,'—') as الوظيفة FROM workers ORDER BY name")
+        wlist = run_query("SELECT name,iqama_id,COALESCE(start_date::text,'—') as start_date,COALESCE(base_salary,0) as الراتب,COALESCE(job_title,'—') as الوظيفة FROM workers ORDER BY name")
         if not wlist.empty:
             st.dataframe(wlist.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','start_date':'تاريخ الالتحاق'}),
                          use_container_width=True, hide_index=True)
+
+    # ===== تبويب 2: تعديل / حذف عامل =====
+    with tabs[1]:
+        st.markdown("#### تعديل أو حذف عامل")
+        wdf_e = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'') as job_title,COALESCE(phone,'') as phone FROM workers ORDER BY name")
+        if wdf_e.empty:
+            st.info("لا يوجد عمال.")
+        else:
+            sel_e = st.selectbox("اختر العامل:", wdf_e['name'].tolist(), key="edit_sel")
+            er = wdf_e[wdf_e['name']==sel_e].iloc[0]
+            eid = int(er['id'])
+            ec1,ec2 = st.columns(2)
+            new_name  = ec1.text_input("الاسم:", value=str(er['name']), key="e_name")
+            new_iqama = ec2.text_input("رقم الإقامة:", value=str(er['iqama_id']), key="e_iqama")
+            ec3,ec4 = st.columns(2)
+            new_sal   = ec3.number_input("الراتب الأساسي:", min_value=0.0, value=float(er['base_salary']), key="e_sal")
+            new_job   = ec4.text_input("المسمى الوظيفي:", value=str(er['job_title']), key="e_job")
+            new_phone = st.text_input("رقم الجوال:", value=str(er['phone']), key="e_phone")
+            col_upd, col_del = st.columns(2)
+            if col_upd.button("💾 حفظ التعديلات", type="primary"):
+                run_write("UPDATE workers SET name=:n,iqama_id=:i,base_salary=:b,job_title=:j,phone=:p WHERE id=:id",
+                          {"n":new_name,"i":new_iqama,"b":float(new_sal),"j":new_job,"p":new_phone,"id":eid})
+                st.success(f"✅ تم تعديل بيانات [{new_name}]!")
+                st.rerun()
+            if 'confirm_del_w' not in st.session_state: st.session_state.confirm_del_w = False
+            if col_del.button("🗑️ حذف العامل", type="secondary"):
+                st.session_state.confirm_del_w = True
+            if st.session_state.confirm_del_w:
+                st.error(f"⚠️ هل أنت متأكد من حذف [{sel_e}] وكل بياناته؟")
+                cy,cn = st.columns(2)
+                if cy.button("✅ نعم احذف", key="del_yes_w"):
+                    run_write("DELETE FROM worker_attendance WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_deductions WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_advances WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM worker_salaries WHERE worker_id=:id",{"id":eid})
+                    run_write("DELETE FROM workers WHERE id=:id",{"id":eid})
+                    st.success(f"✅ تم حذف [{sel_e}]!")
+                    st.session_state.confirm_del_w = False
+                    st.rerun()
+                if cn.button("❌ إلغاء", key="del_no_w"):
+                    st.session_state.confirm_del_w = False
+                    st.rerun()
 
     # ===== تبويب 3: سلفة =====
     with tabs[2]:
@@ -4427,35 +4474,57 @@ elif menu == "👷 العمال والأجور":
             wrow = wdf.iloc[[f"{r['name']} ({r['iqama_id']})" for _,r in wdf.iterrows()].index(ws2)]
             base_sal = float(wrow['base_salary'])
 
-            # حساب المستحق حتى اليوم
+            # ============================================================
+            # حساب المستحق — منطق شهري صحيح
+            # المستحق = أيام الشهر الحالي من بداية الشهر أو تاريخ الالتحاق
+            # ============================================================
             today = datetime.date.today()
-            # حساب الأيام من تاريخ الالتحاق الفعلي
-            _start_adv = wrow.get('start_date', today.replace(day=1))
+            daily_rate_adv = round(base_sal / 30, 2)
+
+            # تاريخ الالتحاق
+            _start_adv = wrow.get('start_date', today)
             if hasattr(_start_adv, 'date'): _start_adv = _start_adv.date()
             elif isinstance(_start_adv, str):
                 try: _start_adv = datetime.date.fromisoformat(str(_start_adv))
-                except: _start_adv = today.replace(day=1)
-            days_worked = max(1, (today - _start_adv).days + 1)
-            daily_rate_adv = round(base_sal / 30, 2)
-            # خصم أيام الغياب بدون عذر
-            absent_adv = int(run_query("SELECT COUNT(*) as c FROM worker_attendance WHERE worker_id=:w AND status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='')",{"w":int(wid)})['c'].iloc[0])
-            earned_today = round(daily_rate_adv * max(0, days_worked - absent_adv), 2)
+                except: _start_adv = today
 
-            # السلف المدفوعة هذا الشهر
+            # بداية الفترة الحالية = أول الشهر أو تاريخ الالتحاق (أيهما أحدث)
+            month_start = today.replace(day=1)
+            period_start = max(month_start, _start_adv)
+
+            # أيام العمل في الشهر الحالي فقط
+            days_worked = max(0, (today - period_start).days + 1)
+
+            # غياب بدون عذر في الشهر الحالي فقط
+            absent_adv = int(run_query(
+                "SELECT COUNT(*) as c FROM worker_attendance WHERE worker_id=:w AND status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='') AND att_date BETWEEN :s AND :e",
+                {"w":int(wid), "s":str(period_start), "e":str(today)})['c'].iloc[0])
+
+            paid_days_adv = max(0, days_worked - absent_adv)
+            earned_today  = round(daily_rate_adv * paid_days_adv, 2)
+
+            # السلف المعلقة (غير مخصومة بعد)
             month_str = today.strftime("%Y-%m")
             adv_this_month = float(run_query(
                 "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
                 {"w":int(wid)})['t'].iloc[0])
 
-            remaining = max(0, earned_today - adv_this_month)
+            # الرواتب المدفوعة هذا الشهر
+            paid_sal_month = float(run_query(
+                "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
+                {"w":int(wid), "m":month_str})['t'].iloc[0])
 
-            ca,cb,cc = st.columns(3)
+            remaining = max(0, earned_today - adv_this_month - paid_sal_month)
+
+            ca,cb,cc,cd = st.columns(4)
             ca.metric("الراتب الشهري", f"{base_sal:,.2f} ر")
-            cb.metric(f"المستحق حتى اليوم ({days_worked} يوم)", f"{earned_today:,.2f} ر")
-            cc.metric("السلف المعلقة", f"{adv_this_month:,.2f} ر")
+            cb.metric(f"مستحق الشهر ({paid_days_adv} يوم)", f"{earned_today:,.2f} ر")
+            cc.metric("سلف معلقة", f"{adv_this_month:,.2f} ر")
+            cd.metric("رواتب مدفوعة هذا الشهر", f"{paid_sal_month:,.2f} ر")
+            st.caption(f"📅 الفترة: {period_start} → {today} | غياب بدون عذر: {absent_adv} يوم | اليومي: {daily_rate_adv:,.2f} ر")
 
             if remaining <= 0:
-                st.error(f"⛔ لا يوجد راتب مستحق لهذا العامل الآن — السلف ({adv_this_month:,.2f} ر) تساوي أو تتجاوز المستحق ({earned_today:,.2f} ر)")
+                st.error(f"⛔ لا يوجد مستحق — المدفوع ({adv_this_month+paid_sal_month:,.2f} ر) يساوي أو يتجاوز المستحق ({earned_today:,.2f} ر)")
             else:
                 st.success(f"✅ يمكن صرف سلفة بحد أقصى: {remaining:,.2f} ريال")
                 adv_amt = st.number_input("مبلغ السلفة:", min_value=0.01, max_value=float(remaining), value=float(min(remaining, base_sal/4)), key=f"adv_amt_{ak}")
@@ -4509,7 +4578,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 </div>
 <div class="bal">
   <p><b>الراتب الشهري:</b> {base_sal:,.2f} ريال</p>
-  <p><b>المستحق حتى اليوم ({days_worked}/{days_in_month}):</b> {earned_today:,.2f} ريال</p>
+  <p><b>المستحق حتى اليوم ({days_worked} يوم):</b> {earned_today:,.2f} ريال</p>
   <p><b>هذه السلفة:</b> {adv_amt:,.2f} ريال</p>
   <p><b>الرصيد المتبقي بعد السلفة:</b> {max(0,remaining-adv_amt):,.2f} ريال</p>
 </div>
@@ -4536,48 +4605,6 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.session_state.adv_rcpt  = None
                     st.rerun()
 
-
-    # ===== تبويب 2: تعديل / حذف عامل =====
-    with tabs[1]:
-        st.markdown("#### تعديل أو حذف عامل")
-        wdf_e = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'') as job_title,COALESCE(phone,'') as phone FROM workers ORDER BY name")
-        if wdf_e.empty:
-            st.info("لا يوجد عمال.")
-        else:
-            sel_e = st.selectbox("اختر العامل:", wdf_e['name'].tolist(), key="edit_sel")
-            er = wdf_e[wdf_e['name']==sel_e].iloc[0]
-            eid = int(er['id'])
-            ec1,ec2 = st.columns(2)
-            new_name  = ec1.text_input("الاسم:", value=str(er['name']), key="e_name")
-            new_iqama = ec2.text_input("رقم الإقامة:", value=str(er['iqama_id']), key="e_iqama")
-            ec3,ec4 = st.columns(2)
-            new_sal   = ec3.number_input("الراتب الأساسي:", min_value=0.0, value=float(er['base_salary']), key="e_sal")
-            new_job   = ec4.text_input("المسمى الوظيفي:", value=str(er['job_title']), key="e_job")
-            new_phone = st.text_input("رقم الجوال:", value=str(er['phone']), key="e_phone")
-            col_upd, col_del = st.columns(2)
-            if col_upd.button("💾 حفظ التعديلات", type="primary"):
-                run_write("UPDATE workers SET name=:n,iqama_id=:i,base_salary=:b,job_title=:j,phone=:p WHERE id=:id",
-                          {"n":new_name,"i":new_iqama,"b":float(new_sal),"j":new_job,"p":new_phone,"id":eid})
-                st.success(f"✅ تم تعديل بيانات [{new_name}]!")
-                st.rerun()
-            if 'confirm_del_w' not in st.session_state: st.session_state.confirm_del_w = False
-            if col_del.button("🗑️ حذف العامل", type="secondary"):
-                st.session_state.confirm_del_w = True
-            if st.session_state.confirm_del_w:
-                st.error(f"⚠️ هل أنت متأكد من حذف [{sel_e}] وكل بياناته؟")
-                cy,cn = st.columns(2)
-                if cy.button("✅ نعم احذف", key="del_yes_w"):
-                    run_write("DELETE FROM worker_attendance WHERE worker_id=:id",{"id":eid})
-                    run_write("DELETE FROM worker_deductions WHERE worker_id=:id",{"id":eid})
-                    run_write("DELETE FROM worker_advances WHERE worker_id=:id",{"id":eid})
-                    run_write("DELETE FROM worker_salaries WHERE worker_id=:id",{"id":eid})
-                    run_write("DELETE FROM workers WHERE id=:id",{"id":eid})
-                    st.success(f"✅ تم حذف [{sel_e}]!")
-                    st.session_state.confirm_del_w = False
-                    st.rerun()
-                if cn.button("❌ إلغاء", key="del_no_w"):
-                    st.session_state.confirm_del_w = False
-                    st.rerun()
 
     # ===== تبويب 4: خصم =====
     with tabs[3]:
@@ -4780,60 +4807,72 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
             wrow3 = wdf2[wdf2['name']==ws3].iloc[0]
             base3 = float(wrow3['base_salary'])
 
-            today3      = datetime.date.today()
-            start_date3 = wrow3['start_date']
-            if hasattr(start_date3, 'date'):
-                start_date3 = start_date3.date()
-            elif isinstance(start_date3, str):
-                try: start_date3 = datetime.date.fromisoformat(start_date3)
-                except: start_date3 = today3.replace(day=1)
-
-            # حساب أيام العمل الفعلية من تاريخ الالتحاق حتى اليوم
-            days_since_join = max(1, (today3 - start_date3).days + 1)
+            today3 = datetime.date.today()
             daily_rate = round(base3 / 30, 2)
+            month_str3 = today3.strftime("%Y-%m")
 
-            # أيام الحضور الفعلي من سجل الحضور
-            att_count = run_query("""
-                SELECT
-                    COUNT(CASE WHEN status='حاضر' THEN 1 END) as present_days,
-                    COUNT(CASE WHEN status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='') THEN 1 END) as absent_no_excuse
+            # تاريخ الالتحاق
+            start_date3 = wrow3['start_date']
+            if hasattr(start_date3, 'date'): start_date3 = start_date3.date()
+            elif isinstance(start_date3, str):
+                try: start_date3 = datetime.date.fromisoformat(str(start_date3))
+                except: start_date3 = today3
+
+            # بداية الفترة = أول الشهر أو تاريخ الالتحاق
+            month_start3  = today3.replace(day=1)
+            period_start3 = max(month_start3, start_date3)
+            days_in_period = max(0, (today3 - period_start3).days + 1)
+
+            # غياب بدون عذر في الشهر الحالي
+            att_count3 = run_query("""
+                SELECT COUNT(CASE WHEN status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='') THEN 1 END) as absent_no_exc
                 FROM worker_attendance WHERE worker_id=:w AND att_date BETWEEN :s AND :e""",
-                {"w": int(wid2), "s": str(start_date3), "e": str(today3)})
+                {"w": int(wid2), "s": str(period_start3), "e": str(today3)})
+            absent_no_exc = int(att_count3['absent_no_exc'].iloc[0]) if not att_count3.empty else 0
 
-            present_days   = int(att_count['present_days'].iloc[0])  if not att_count.empty else 0
-            absent_no_exc  = int(att_count['absent_no_excuse'].iloc[0]) if not att_count.empty else 0
+            paid_days = max(0, days_in_period - absent_no_exc)
+            earned3   = round(daily_rate * paid_days, 2)
 
-            # الأيام المستحق عنها = أيام من تاريخ التعيين - غياب بدون عذر
-            paid_days  = max(0, days_since_join - absent_no_exc)
-            earned3    = round(daily_rate * paid_days, 2)
+            # مستحقات مرحّلة من شهور سابقة لم تُصرف
+            carried_row = run_query(
+                "SELECT COALESCE(carried_over,0) as c FROM worker_balance WHERE worker_id=:w",
+                {"w": int(wid2)})
+            carried_over3 = float(carried_row['c'].iloc[0]) if not carried_row.empty else 0.0
 
             # السلف المعلقة
             adv_total3 = float(run_query(
                 "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
                 {"w": int(wid2)})['t'].iloc[0])
 
-            # الخصومات الأخرى (غير السلف)
+            # خصومات الشهر الحالي
             ded_total3 = float(run_query(
-                "SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w",
-                {"w": int(wid2)})['t'].iloc[0])
+                "SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w AND deduction_date BETWEEN :s AND :e",
+                {"w": int(wid2), "s": str(period_start3), "e": str(today3)})['t'].iloc[0])
 
-            net_sal3 = max(0, earned3 - adv_total3 - ded_total3)
+            # الإجمالي المستحق = هذا الشهر + مرحّل من قبل - سلف - خصومات
+            total_due3 = round(earned3 + carried_over3, 2)
+            net_sal3   = max(0, total_due3 - adv_total3 - ded_total3)
 
-            # الرواتب المدفوعة مسبقاً
-            month_str3 = today3.strftime("%Y-%m")
+            # الرواتب المدفوعة هذا الشهر
             paid_this_month = float(run_query(
                 "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
                 {"w": int(wid2), "m": month_str3})['t'].iloc[0])
 
-            sal_summary_df = pd.DataFrame([
-                {"البيان": "📌 الراتب الشهري الأساسي",                       "المبلغ (ريال)": round(base3, 2)},
-                {"البيان": f"📅 أيام من تاريخ الالتحاق حتى اليوم",            "المبلغ (ريال)": days_since_join},
-                {"البيان": f"🔴 غياب بدون عذر (خصم {absent_no_exc} يوم)",    "المبلغ (ريال)": round(absent_no_exc * daily_rate, 2)},
-                {"البيان": f"✅ أيام مستحقة ({paid_days} يوم × {daily_rate:.2f})", "المبلغ (ريال)": round(earned3, 2)},
-                {"البيان": "➖ السلف المعلقة",                                "المبلغ (ريال)": round(adv_total3, 2)},
-                {"البيان": "➖ خصومات أخرى",                                  "المبلغ (ريال)": round(ded_total3, 2)},
-                {"البيان": "💰 الصافي المستحق",                               "المبلغ (ريال)": round(net_sal3, 2)},
-            ])
+            rows_sal = [
+                {"البيان": "📌 الراتب الشهري الأساسي",                              "المبلغ (ريال)": round(base3, 2)},
+                {"البيان": f"📅 أيام الشهر الحالي ({period_start3} ← {today3})",    "المبلغ (ريال)": days_in_period},
+                {"البيان": f"🔴 غياب بدون عذر ({absent_no_exc} يوم × {daily_rate:.2f})", "المبلغ (ريال)": round(absent_no_exc * daily_rate, 2)},
+                {"البيان": f"✅ مستحق هذا الشهر ({paid_days} يوم)",                 "المبلغ (ريال)": round(earned3, 2)},
+            ]
+            if carried_over3 > 0:
+                rows_sal.append({"البيان": "🔁 مرحّل من شهور سابقة لم تُصرف",     "المبلغ (ريال)": round(carried_over3, 2)})
+            rows_sal += [
+                {"البيان": "📊 إجمالي المستحق (هذا الشهر + مرحّل)",               "المبلغ (ريال)": round(total_due3, 2)},
+                {"البيان": "➖ سلف معلقة",                                          "المبلغ (ريال)": round(adv_total3, 2)},
+                {"البيان": "➖ خصومات الشهر",                                        "المبلغ (ريال)": round(ded_total3, 2)},
+                {"البيان": "💰 الصافي المستحق الآن",                               "المبلغ (ريال)": round(net_sal3, 2)},
+            ]
+            sal_summary_df = pd.DataFrame(rows_sal)
             if paid_this_month > 0:
                 sal_summary_df = pd.concat([sal_summary_df, pd.DataFrame([
                     {"البيان": "⚠️ مدفوع هذا الشهر مسبقاً", "المبلغ (ريال)": round(paid_this_month, 2)}
@@ -4844,15 +4883,33 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
 
             if net_sal3 <= 0.5:
                 st.error("⛔ لا يوجد راتب مستحق — السلف والخصومات تعادل أو تتجاوز المستحق.")
-            elif paid_this_month >= net_sal3:
-                st.warning(f"⚠️ تم صرف هذا الشهر مسبقاً: {paid_this_month:,.2f} ريال")
             else:
-                if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
-                    ok_sal = run_write(
-                        "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
-                        {"w": int(wid2), "my": month_str3, "b": float(base3), "a": float(adv_total3+ded_total3), "n": float(net_sal3)})
+                if paid_this_month > 0:
+                    st.info(f"ℹ️ تم صرف {paid_this_month:,.2f} ريال هذا الشهر — المتبقي: {max(0,net_sal3-paid_this_month):,.2f} ريال")
+                remaining_to_pay = max(0, net_sal3 - paid_this_month)
+                if remaining_to_pay <= 0:
+                    st.warning("⚠️ تم صرف كامل الراتب المستحق هذا الشهر")
+                else:
+                    actual_pay = st.number_input(
+                        f"المبلغ المراد صرفه (الحد الأقصى: {remaining_to_pay:,.2f} ريال):",
+                        min_value=0.01, max_value=float(remaining_to_pay),
+                        value=float(remaining_to_pay), key=f"sal_pay_amt_{slk}")
+                    if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
+                        net_sal3 = actual_pay  # المبلغ المدفوع فعلاً
+                        ok_sal = run_write(
+                            "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
+                            {"w": int(wid2), "my": month_str3, "b": float(base3), "a": float(adv_total3+ded_total3), "n": float(net_sal3)})
                     if ok_sal:
                         run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'", {"w": int(wid2)})
+                        # الباقي غير المدفوع = إجمالي المستحق - ما دُفع فعلاً هذا الشهر
+                        total_paid_now = paid_this_month + float(net_sal3)
+                        unpaid = max(0, round(total_due3 - adv_total3 - ded_total3 - total_paid_now, 2))
+                        run_write("""INSERT INTO worker_balance(worker_id, carried_over, last_updated)
+                                     VALUES(:w, :c, CURRENT_DATE)
+                                     ON CONFLICT(worker_id) DO UPDATE SET carried_over=:c, last_updated=CURRENT_DATE""",
+                                  {"w": int(wid2), "c": unpaid})
+                        if unpaid > 0:
+                            st.info(f"🔁 سيُرحَّل للشهر القادم: {unpaid:,.2f} ريال")
                         today_str3 = today3.strftime("%Y/%m/%d")
                         rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
                         _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
