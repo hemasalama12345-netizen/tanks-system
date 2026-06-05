@@ -1198,15 +1198,19 @@ if menu == "📊 لوحة التحكم":
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
     if not adf.empty:
+        # Streamlit يعرض الأعمدة من اليسار لليمين، فنعكس الترتيب عشان الطلبية تظهر على اليمين
+        cols_order = ["الاستخدام", "السعة", "الحالة", "القيمة", "الكمية", "العميل", "الطلبية"]
+        cols_exist = [c for c in cols_order if c in adf.columns]
+        adf = adf[cols_exist]
         st.dataframe(adf, use_container_width=True, hide_index=True,
                      column_config={
-                         "القيمة":      st.column_config.NumberColumn(format="%.0f ر", width="medium"),
-                         "الكمية":      st.column_config.NumberColumn(format="%d", width="small"),
-                         "الطلبية":     st.column_config.TextColumn(width="medium"),
+                         "الطلبية":     st.column_config.TextColumn(width="large"),
                          "العميل":      st.column_config.TextColumn(width="medium"),
+                         "الكمية":      st.column_config.NumberColumn(format="%d", width="small"),
+                         "القيمة":      st.column_config.NumberColumn(format="%.0f ر", width="medium"),
+                         "الحالة":      st.column_config.TextColumn(width="small"),
                          "السعة":       st.column_config.TextColumn(width="small"),
-                         "الحالة":      st.column_config.TextColumn(width="medium"),
-                         "الاستخدام":   st.column_config.TextColumn(width="medium"),
+                         "الاستخدام":   st.column_config.TextColumn(width="small"),
                      })
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
