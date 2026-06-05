@@ -3567,28 +3567,28 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         <div class="card-badge-en">Tank ID Card</div>
       </div>
     </div>
+    <div class="sn-bar">{item['sn']}</div>
     <div class="card-body">
-      <div class="qr-section">
-        <img src="data:image/png;base64,{item['qr_b64']}" class="qr-box" style="display:block;width:130px;height:130px;border:3px solid #1E3A8A;border-radius:8px;" alt="QR">
+      <div class="info-col">
+        <div class="info-grid">
+          <div class="ig"><div class="ig-lbl">نوع الاستخدام</div><div class="ig-val">{tu}</div></div>
+          <div class="ig"><div class="ig-lbl">Type of Use</div><div class="ig-val ltr">{tu}</div></div>
+          <div class="ig"><div class="ig-lbl">السعة</div><div class="ig-val">{tc}</div></div>
+          <div class="ig"><div class="ig-lbl">Capacity</div><div class="ig-val ltr">{tc}</div></div>
+          <div class="ig"><div class="ig-lbl">نوع التركيب</div><div class="ig-val">{tt}</div></div>
+          <div class="ig"><div class="ig-lbl">Installation</div><div class="ig-val ltr">{tt}</div></div>
+          <div class="ig"><div class="ig-lbl">رقم الطلبية</div><div class="ig-val">{order_id}</div></div>
+          <div class="ig"><div class="ig-lbl">Order No.</div><div class="ig-val ltr">{order_id}</div></div>
+          <div class="ig"><div class="ig-lbl">العميل</div><div class="ig-val">{customer_name}</div></div>
+          <div class="ig"><div class="ig-lbl">Customer</div><div class="ig-val ltr">{customer_name}</div></div>
+          <div class="ig"><div class="ig-lbl">تاريخ الإنتاج</div><div class="ig-val">{today_str}</div></div>
+          <div class="ig"><div class="ig-lbl">Production Date</div><div class="ig-val ltr">{today_str}</div></div>
+        </div>
+      </div>
+      <div class="qr-col">
+        <img src="data:image/png;base64,{item['qr_b64']}" class="qr-img" alt="QR">
         <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
         <div class="seq-badge">خزان {item['index']} من {item['total']}<br>Tank {item['index']} of {item['total']}</div>
-      </div>
-      <div class="info-section">
-        <div class="sn-display">{item['sn']}</div>
-        <div class="info-grid-card">
-          <div class="ig-item"><span class="ig-lbl">نوع الاستخدام</span><span class="ig-val">{tu}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Type of Use</span><span class="ig-val ltr">{tu}</span></div>
-          <div class="ig-item"><span class="ig-lbl">السعة</span><span class="ig-val">{tc}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Capacity</span><span class="ig-val ltr">{tc}</span></div>
-          <div class="ig-item"><span class="ig-lbl">نوع التركيب</span><span class="ig-val">{tt}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Installation</span><span class="ig-val ltr">{tt}</span></div>
-          <div class="ig-item"><span class="ig-lbl">رقم الطلبية</span><span class="ig-val">{order_id}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Order No.</span><span class="ig-val ltr">{order_id}</span></div>
-          <div class="ig-item"><span class="ig-lbl">العميل</span><span class="ig-val">{customer_name}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Customer</span><span class="ig-val ltr">{customer_name}</span></div>
-          <div class="ig-item"><span class="ig-lbl">تاريخ الإنتاج</span><span class="ig-val">{today_str}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Production Date</span><span class="ig-val ltr">{today_str}</span></div>
-        </div>
       </div>
     </div>
     <div class="card-footer">
@@ -3609,63 +3609,86 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 .a4-page{{
   width:210mm;min-height:297mm;
   background:#fff;margin:0 auto 20px auto;
-  display:flex;align-items:center;justify-content:center;
-  padding:20mm;page-break-after:always;
+  padding:14mm 14mm;
+  page-break-after:always;
+  display:flex;flex-direction:column;justify-content:center;
 }}
-.card{{width:100%;border:3px solid #1E3A8A;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.15);}}
+.card{{
+  width:100%;border:3px solid #1E3A8A;border-radius:14px;
+  overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.12);
+}}
+/* هيدر */
 .card-header{{
   background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
-  color:#fff;padding:18px 22px;
+  color:#fff;padding:14px 18px;
   display:flex;justify-content:space-between;align-items:center;
 }}
-.header-left{{display:flex;gap:14px;align-items:center;}}
-.factory-icon{{font-size:38px;}}
-.factory-name{{font-size:18px;font-weight:800;margin-bottom:3px;}}
-.factory-sub{{font-size:11px;opacity:.8;direction:ltr;}}
-.factory-addr{{font-size:10px;opacity:.7;margin-top:2px;}}
+.header-left{{display:flex;gap:10px;align-items:center;}}
+.factory-icon{{font-size:30px;}}
+.factory-name{{font-size:16px;font-weight:800;margin-bottom:2px;}}
+.factory-sub{{font-size:10px;opacity:.8;direction:ltr;}}
+.factory-addr{{font-size:9px;opacity:.7;margin-top:1px;}}
 .header-right{{text-align:center;}}
-.card-badge{{background:rgba(255,255,255,.2);padding:6px 16px;border-radius:20px;font-size:14px;font-weight:700;margin-bottom:4px;}}
-.card-badge-en{{font-size:11px;opacity:.8;direction:ltr;}}
-.card-body{{display:flex;gap:0;}}
-.qr-section{{
+.card-badge{{background:rgba(255,255,255,.2);padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:3px;}}
+.card-badge-en{{font-size:10px;opacity:.8;direction:ltr;}}
+/* الرقم المسلسل */
+.sn-bar{{
+  background:#eff6ff;border-bottom:2px solid #bfdbfe;
+  padding:10px 18px;text-align:center;
+  font-family:monospace;font-size:17px;font-weight:800;
+  color:#1E3A8A;letter-spacing:1px;
+}}
+/* Body: QR يسار + grid يمين */
+.card-body{{
+  display:flex;flex-direction:row;gap:0;
+  min-height:200px;
+}}
+.qr-col{{
   background:#f8fafc;border-left:1px solid #e2e8f0;
-  padding:24px 20px;display:flex;flex-direction:column;
-  align-items:center;gap:12px;min-width:170px;
+  padding:18px 16px;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;
+  width:160px;flex-shrink:0;
 }}
-.qr-box{{
-  width:130px;height:130px;
-  border:3px solid #1E3A8A;border-radius:10px;
-  overflow:hidden;background:#fff;
-  display:flex;align-items:center;justify-content:center;
+.qr-img{{
+  width:120px;height:120px;
+  border:3px solid #1E3A8A;border-radius:8px;
+  display:block;
 }}
-.qr-box canvas,.qr-box img{{width:130px!important;height:130px!important;display:block;}}
-.qr-caption{{font-size:11px;color:#64748b;text-align:center;line-height:1.6;}}
+.qr-caption{{font-size:10px;color:#64748b;text-align:center;line-height:1.5;}}
 .seq-badge{{
   background:#1E3A8A;color:#fff;
-  padding:6px 12px;border-radius:8px;
-  font-size:11px;font-weight:700;text-align:center;line-height:1.6;
+  padding:5px 10px;border-radius:6px;
+  font-size:10px;font-weight:700;text-align:center;line-height:1.5;
 }}
-.info-section{{flex:1;padding:24px 22px;}}
-.sn-display{{
-  font-family:monospace;font-size:16px;font-weight:800;
-  color:#1E3A8A;background:#eff6ff;
-  padding:10px 14px;border-radius:8px;
-  margin-bottom:16px;border:2px solid #bfdbfe;
-  text-align:center;letter-spacing:1px;
+/* Grid البيانات */
+.info-col{{
+  flex:1;padding:14px 16px;
+  display:flex;flex-direction:column;justify-content:center;
 }}
-.info-grid-card{{display:grid;grid-template-columns:1fr 1fr;gap:8px;}}
-.ig-item{{display:flex;flex-direction:column;background:#f8fafc;border-radius:6px;padding:8px 10px;}}
+.info-grid{{
+  display:grid;grid-template-columns:1fr 1fr;gap:7px;
+}}
+.ig{{
+  background:#f8fafc;border-radius:6px;padding:7px 9px;
+  border-right:3px solid #1E3A8A;
+}}
 .ig-lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}}
-.ig-val{{font-size:12px;font-weight:700;color:#1e293b;}}
-.ig-val.ltr{{direction:ltr;text-align:left;}}
+.ig-val{{font-size:12px;font-weight:700;color:#1e293b;word-break:break-word;}}
+.ig-val.ltr{{direction:ltr;text-align:left;font-size:11px;}}
+/* فوتر */
 .card-footer{{
   background:#f1f5f9;border-top:1px solid #e2e8f0;
-  padding:10px 22px;display:flex;
-  justify-content:space-between;font-size:10px;color:#64748b;
+  padding:8px 18px;display:flex;
+  justify-content:space-between;font-size:9px;color:#64748b;
 }}
 @media print{{
   body{{background:#fff;}}
-  .a4-page{{width:210mm;min-height:297mm;margin:0;padding:15mm;page-break-after:always;box-shadow:none;}}
+  .a4-page{{
+    width:210mm;min-height:297mm;
+    margin:0;padding:12mm;
+    page-break-after:always;
+  }}
   .card{{box-shadow:none;}}
 }}
 </style>
