@@ -4536,129 +4536,6 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.session_state.adv_rcpt  = None
                     st.rerun()
 
-    # ===== تبويب 6: الرواتب =====
-    with tabs[5]:
-        st.markdown("#### مسير الرواتب")
-        slk = st.session_state.slk
-        wdf2 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
-        if wdf2.empty:
-            st.info("أضف عمالاً أولاً.")
-        else:
-            ws3 = st.selectbox("اختر العامل:", wdf2['name'].tolist(), key=f"sal_sel_{slk}")
-            wid2 = int(wdf2[wdf2['name']==ws3]['id'].iloc[0])
-            wrow3 = wdf2[wdf2['name']==ws3].iloc[0]
-            base3 = float(wrow3['base_salary'])
-
-            today3 = datetime.date.today()
-            days_in_month3 = 30
-            days_worked3   = today3.day
-            earned3        = round(base3 / days_in_month3 * days_worked3, 2)
-
-            # السلف المعلقة
-            adv_total3 = float(run_query(
-                "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
-                {"w":int(wid2)})['t'].iloc[0])
-            net_sal3 = max(0, earned3 - adv_total3)
-
-            # الرواتب المدفوعة مسبقاً هذا الشهر
-            month_str3 = today3.strftime("%Y-%m")
-            paid_this_month = float(run_query(
-                "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
-                {"w":int(wid2),"m":month_str3})['t'].iloc[0])
-
-            # عرض الملخص - راتب غير قابل للتعديل
-            sal_summary_df = pd.DataFrame([
-                {"البيان": "📌 الراتب الشهري الأساسي",          "المبلغ (ريال)": round(base3,2)},
-                {"البيان": f"📅 المستحق حتى اليوم ({days_worked3}/{days_in_month3} يوم)", "المبلغ (ريال)": round(earned3,2)},
-                {"البيان": "➖ السلف المعلقة",                   "المبلغ (ريال)": round(adv_total3,2)},
-                {"البيان": "✅ الصافي المستحق",                   "المبلغ (ريال)": round(net_sal3,2)},
-            ])
-            if paid_this_month > 0:
-                sal_summary_df = pd.concat([sal_summary_df, pd.DataFrame([
-                    {"البيان": "⚠️ مدفوع هذا الشهر مسبقاً", "المبلغ (ريال)": round(paid_this_month,2)}
-                ])], ignore_index=True)
-            st.dataframe(sal_summary_df, use_container_width=True, hide_index=True,
-                         column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر")})
-
-            if net_sal3 <= 0.5:
-                st.error("⛔ لا يوجد راتب مستحق لهذا العامل الآن — السلف تعادل أو تتجاوز المستحق.")
-            else:
-                if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
-                    ok_sal = run_write(
-                        "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
-                        {"w":int(wid2),"my":month_str3,"b":float(base3),"a":float(adv_total3),"n":float(net_sal3)})
-                    if ok_sal:
-                        run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'",{"w":int(wid2)})
-                        today_str3 = today3.strftime("%Y/%m/%d")
-                        rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
-                        _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
-
-                        sal_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#16a34a;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
-.badge-en{{background:#f0fdf4;color:#16a34a;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
-.qr-img{{width:65px;height:65px;border:2px solid #16a34a;border-radius:6px;}}
-.amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
-.amt-box .val{{font-size:24px;font-weight:800;}}
-.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
-.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #16a34a;}}
-.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
-.breakdown{{background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #86efac;}}
-.breakdown p{{font-size:12px;margin:3px 0;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
-.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
-.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{padding:12px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no3}</b> | {today_str3}</p></div>
-  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
-    <div class="badge">إيصال راتب</div><div class="badge-en">Salary Receipt</div>
-    <img class="qr-img" src="data:image/png;base64,{_qr_sal}" alt="QR">
-  </div>
-</div>
-<div class="amt-box"><div><div style="font-size:12px;opacity:.85;">صافي الراتب المستحق</div><div style="font-size:10px;opacity:.6">Net Salary</div></div><div class="val">{net_sal3:,.2f} ريال</div></div>
-<div class="grid2">
-  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{ws3}</div></div>
-  <div class="ig"><div class="lbl">رقم الإقامة</div><div class="val">{wrow3['iqama_id']}</div></div>
-  <div class="ig"><div class="lbl">الشهر</div><div class="val">{month_str3}</div></div>
-  <div class="ig"><div class="lbl">تاريخ الصرف</div><div class="val">{today_str3}</div></div>
-</div>
-<div class="breakdown">
-  <p><b>الراتب الأساسي الشهري:</b> {base3:,.2f} ريال</p>
-  <p><b>أيام العمل ({days_worked3}/{days_in_month3}):</b> المستحق = {earned3:,.2f} ريال</p>
-  <p><b>السلف المخصومة:</b> {adv_total3:,.2f} ريال</p>
-  <p style="border-top:1px solid #86efac;padding-top:6px;margin-top:6px;"><b>✅ الصافي المدفوع:</b> {net_sal3:,.2f} ريال</p>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div><div class="sig-en">Worker Signature</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str3}</span></div>
-</body></html>"""
-                        st.session_state.sal_rcpt  = sal_html
-                        st.session_state.sal_ready = True
-                        st.success(f"✅ راتب {net_sal3:,.2f} ريال للعامل {ws3}")
-                        st.session_state.slk += 1
-
-            if st.session_state.sal_ready and st.session_state.sal_rcpt:
-                st.download_button("🖨️ طباعة إيصال الراتب (HTML)",
-                    st.session_state.sal_rcpt.encode('utf-8'),
-                    f"Salary_{st.session_state.slk}.html",
-                    "text/html; charset=utf-8", key="dl_sal_rcpt")
-                st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
-                if st.button("🆕 راتب جديد", key="new_sal"):
-                    st.session_state.sal_ready = False
-                    st.session_state.sal_rcpt  = None
-                    st.rerun()
 
     # ===== تبويب 2: تعديل / حذف عامل =====
     with tabs[1]:
@@ -5048,9 +4925,6 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     st.session_state.sal_rcpt  = None
                     st.rerun()
 
-    # ===== تبويب 5b: تقرير مسير الرواتب HTML =====
-    with tabs[5]:
-        pass  # مدمج في تبويب الرواتب أعلاه
 
     # ===== تبويب 7: سجل العمال =====
     with tabs[6]:
