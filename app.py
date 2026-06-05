@@ -1161,9 +1161,10 @@ if menu == "📊 لوحة التحكم":
         inv_show.columns = ['المادة الخام','الكمية','متوسط السعر (ر)','القيمة (ريال)']
         st.dataframe(inv_show, use_container_width=True, hide_index=True,
                      column_config={
-                         "الكمية":          st.column_config.NumberColumn(format="%.2f"),
-                         "متوسط السعر (ر)": st.column_config.NumberColumn(format="%.2f"),
-                         "القيمة (ريال)":   st.column_config.NumberColumn(format="%.2f"),
+                         "المادة الخام":     st.column_config.TextColumn(width="medium"),
+                         "الكمية":          st.column_config.NumberColumn(format="%.2f", width="small"),
+                         "متوسط السعر (ر)": st.column_config.NumberColumn(format="%.2f", width="medium"),
+                         "القيمة (ريال)":   st.column_config.NumberColumn(format="%.2f", width="medium"),
                      })
         st.success(f"📦 **إجمالي قيمة المخزون: {inv_value:,.2f} ريال**")
         st.caption("لتحديث الأسعار: اذهب لقسم المشتريات والمخزن → ضبط المخزن")
@@ -1201,11 +1202,11 @@ if menu == "📊 لوحة التحكم":
                      column_config={
                          "القيمة":      st.column_config.NumberColumn(format="%.0f ر", width="medium"),
                          "الكمية":      st.column_config.NumberColumn(format="%d", width="small"),
-                         "الطلبية":     st.column_config.TextColumn(width="large"),
+                         "الطلبية":     st.column_config.TextColumn(width="medium"),
                          "العميل":      st.column_config.TextColumn(width="medium"),
                          "السعة":       st.column_config.TextColumn(width="small"),
-                         "الحالة":      st.column_config.TextColumn(width="small"),
-                         "الاستخدام":   st.column_config.TextColumn(width="small"),
+                         "الحالة":      st.column_config.TextColumn(width="medium"),
+                         "الاستخدام":   st.column_config.TextColumn(width="medium"),
                      })
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
@@ -5117,16 +5118,20 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
             total_base      = pr_df['الراتب الأساسي'].sum()
             total_earned    = pr_df['مستحق الشهر'].sum()
             total_carried   = pr_df['مرحّل من قبل'].sum()
-            total_grand_due = pr_df['الإجمالي'].sum()          # مستحق الشهر + مرحّل
-            total_deducted  = (pr_df['سلف معلقة'] + pr_df['خصومات'] + pr_df['مدفوع هذا الشهر']).sum()
-            total_net       = pr_df['الصافي المستحق'].sum()    # الباقي الصافي
+            total_grand_due = pr_df['الإجمالي'].sum()     # مستحق الشهر + مرحّل
+            total_adv       = pr_df['سلف معلقة'].sum()
+            total_ded       = pr_df['خصومات'].sum()
+            total_paid      = pr_df['مدفوع هذا الشهر'].sum()
+            total_deducted  = total_adv + total_ded + total_paid
+            # الصافي الكلي = مجموع صافي كل عامل على حدة (بعد max(0,...))
+            total_net       = pr_df['الصافي المستحق'].sum()
 
             c1p,c2p,c3p,c4p = st.columns(4)
-            c1p.metric("إجمالي الرواتب الأساسية",        f"{total_base:,.2f} ر")
-            c2p.metric("إجمالي المستحق (شهر + مرحّل)",   f"{total_grand_due:,.2f} ر",
+            c1p.metric("إجمالي الرواتب الأساسية",         f"{total_base:,.2f} ر")
+            c2p.metric("إجمالي المستحق (شهر + مرحّل)",    f"{total_grand_due:,.2f} ر",
                        delta=f"مرحّل: {total_carried:,.2f} ر" if total_carried>0 else None)
-            c3p.metric("إجمالي السلف والخصومات والمدفوع", f"{total_deducted:,.2f} ر")
-            c4p.metric("✅ إجمالي الصافي المستحق الآن",    f"{total_net:,.2f} ر")
+            c3p.metric("سلف + خصومات + مدفوع",            f"{total_deducted:,.2f} ر")
+            c4p.metric("✅ صافي مستحق لكل العمال",          f"{total_net:,.2f} ر")
 
             # جدول HTML احترافي
             pr_rows_html = ""
@@ -5172,9 +5177,9 @@ tr:nth-child(even){{background:#f8fafc;}}
 </div>
 <div class="summary">
   <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{total_base:,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي المستحق (شهر + مرحّل)</div><div class="val">{total_grand_due:,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات والمدفوع</div><div class="val" style="color:#dc2626">{total_deducted:,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">✅ إجمالي الصافي المستحق الآن</div><div class="val" style="color:#16a34a">{total_net:,.2f} ر</div></div>
+  <div class="sum-box"><div class="lbl">إجمالي المستحق (شهر + مرحّل)</div><div class="val">{total_grand_due:,.2f} ر<br><small style="font-size:10px;color:#2563eb">منه مرحّل: {total_carried:,.2f} ر</small></div></div>
+  <div class="sum-box"><div class="lbl">سلف + خصومات + مدفوع</div><div class="val" style="color:#dc2626">{total_deducted:,.2f} ر<br><small style="font-size:10px">سلف: {total_adv:,.2f} | خصم: {total_ded:,.2f} | مدفوع: {total_paid:,.2f}</small></div></div>
+  <div class="sum-box" style="border-color:#16a34a"><div class="lbl">✅ صافي مستحق لكل العمال</div><div class="val" style="color:#16a34a;font-size:20px">{total_net:,.2f} ر</div></div>
 </div>
 <table>
 <thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
