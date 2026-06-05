@@ -3524,16 +3524,15 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         tu  = _sv(tank_use)
         tt  = _sv(tank_type)
 
-        # توليد QR لكل بطاقة offline بـ pure Python — بدون API ولا CDN
+        # توليد QR لكل بطاقة — API مباشرة لضمان جودة عالية وقراءة سليمة
         cards_data = []
         for i, sn in enumerate(serials_list):
-            # نص ASCII فقط عشان _make_qr_b64_old تشتغل بدون مشاكل
             qr_text = (
                 f"SN:{sn}|ORDER:{order_id}|"
                 f"CAPACITY:{tc}|USE:{tu}|TYPE:{tt}|"
                 f"DATE:{today_str}|SEQ:{i+1}/{len(serials_list)}"
             )
-            qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=8)
+            qr_b64 = _make_qr_fallback(qr_text, color=(30,58,138), module_size=10)
             cards_data.append({
                 "sn": sn,
                 "qr_b64": qr_b64,
