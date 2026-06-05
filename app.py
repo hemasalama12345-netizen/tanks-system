@@ -1198,54 +1198,51 @@ if menu == "📊 لوحة التحكم":
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
     if not adf.empty:
-        # HTML table مع RTL كامل — حل قاطع لمشكلة Streamlit dataframe
+        # بناء صفوف الجدول
         rows_html = ""
-        for _, r in adf.iterrows():
+        for i, (_, r) in enumerate(adf.iterrows()):
             status_color = "#16a34a" if str(r.get("الحالة","")) == "مكتملة" else "#f59e0b"
+            row_bg = "#f8fafc" if i % 2 == 0 else "#ffffff"
             qty_val = r.get("الكمية", "")
             try:
                 qty_str = str(int(float(qty_val)))
             except Exception:
                 qty_str = str(qty_val)
             try:
-                price_str = f"{float(r.get('القيمة', 0)):,.0f} ر"
+                price_str = "{:,.0f} ر".format(float(r.get("القيمة", 0)))
             except Exception:
                 price_str = str(r.get("القيمة", ""))
-            rows_html += f"""
-            <tr>
-                <td style="font-weight:700;color:#1E3A8A;white-space:nowrap;">{r.get("الطلبية","")}</td>
-                <td style="white-space:nowrap;">{r.get("العميل","")}</td>
-                <td style="text-align:center;">{qty_str}</td>
-                <td style="text-align:center;font-family:monospace;white-space:nowrap;">{price_str}</td>
-                <td style="text-align:center;color:{status_color};font-weight:600;">{r.get("الحالة","")}</td>
-                <td style="text-align:center;">{r.get("السعة","—")}</td>
-                <td style="text-align:center;">{r.get("الاستخدام","—")}</td>
-            </tr>"""
-        active_table_html = f"""
-        <div style="direction:rtl;width:100%;overflow-x:auto;margin-bottom:16px;">
-        <table style="width:100%;border-collapse:collapse;font-family:Cairo,sans-serif;font-size:14px;direction:rtl;text-align:right;">
-            <thead>
-                <tr style="background:#1E3A8A;color:white;">
-                    <th style="padding:10px 14px;text-align:right;white-space:nowrap;">رقم الطلبية</th>
-                    <th style="padding:10px 14px;text-align:right;white-space:nowrap;">العميل</th>
-                    <th style="padding:10px 14px;text-align:center;white-space:nowrap;">الكمية</th>
-                    <th style="padding:10px 14px;text-align:center;white-space:nowrap;">القيمة</th>
-                    <th style="padding:10px 14px;text-align:center;white-space:nowrap;">الحالة</th>
-                    <th style="padding:10px 14px;text-align:center;white-space:nowrap;">السعة</th>
-                    <th style="padding:10px 14px;text-align:center;white-space:nowrap;">الاستخدام</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows_html}
-            </tbody>
-        </table>
-        </div>
-        <style>
-        div[style*="direction:rtl"] table tr:nth-child(even){{background:#f8fafc;}}
-        div[style*="direction:rtl"] table tr:hover{{background:#eff6ff;}}
-        div[style*="direction:rtl"] table td{{padding:9px 14px;border-bottom:1px solid #e2e8f0;}}
-        </style>
-        """
+            td = "padding:9px 14px;border-bottom:1px solid #e2e8f0;"
+            rows_html += (
+                '<tr style="background:' + row_bg + ';">'
+                + '<td style="' + td + 'font-weight:700;color:#1E3A8A;white-space:nowrap;">' + str(r.get("الطلبية","")) + '</td>'
+                + '<td style="' + td + 'white-space:nowrap;">' + str(r.get("العميل","")) + '</td>'
+                + '<td style="' + td + 'text-align:center;">' + qty_str + '</td>'
+                + '<td style="' + td + 'text-align:center;font-family:monospace;white-space:nowrap;">' + price_str + '</td>'
+                + '<td style="' + td + 'text-align:center;color:' + status_color + ';font-weight:600;">' + str(r.get("الحالة","")) + '</td>'
+                + '<td style="' + td + 'text-align:center;">' + str(r.get("السعة","—")) + '</td>'
+                + '<td style="' + td + 'text-align:center;">' + str(r.get("الاستخدام","—")) + '</td>'
+                + '</tr>'
+            )
+        th = "padding:10px 14px;white-space:nowrap;border:none;"
+        thead = (
+            '<tr style="background:#1E3A8A;color:white;">'
+            + '<th style="' + th + 'text-align:right;">رقم الطلبية</th>'
+            + '<th style="' + th + 'text-align:right;">العميل</th>'
+            + '<th style="' + th + 'text-align:center;">الكمية</th>'
+            + '<th style="' + th + 'text-align:center;">القيمة</th>'
+            + '<th style="' + th + 'text-align:center;">الحالة</th>'
+            + '<th style="' + th + 'text-align:center;">السعة</th>'
+            + '<th style="' + th + 'text-align:center;">الاستخدام</th>'
+            + '</tr>'
+        )
+        active_table_html = (
+            '<div style="direction:rtl;width:100%;overflow-x:auto;margin-bottom:16px;">'
+            + '<table style="width:100%;border-collapse:collapse;font-family:Cairo,sans-serif;font-size:14px;direction:rtl;text-align:right;">'
+            + '<thead>' + thead + '</thead>'
+            + '<tbody>' + rows_html + '</tbody>'
+            + '</table></div>'
+        )
         st.markdown(active_table_html, unsafe_allow_html=True)
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
