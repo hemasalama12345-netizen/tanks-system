@@ -392,11 +392,29 @@ def generate_invoice_number(delivery_id):
     return f"INV-{datetime.date.today().year}-{next_id:06d}"
 
 st.set_page_config(page_title="مصنع ركن القوالب - ERP v7.0", layout="wide")
-# توسيط كل النصوص في جداول Streamlit
+# توسيط شامل لكل الجداول والنصوص
 st.markdown("""<style>
-div[data-testid="stDataFrame"] td { text-align: center !important; vertical-align: middle !important; }
-div[data-testid="stDataFrame"] th { text-align: center !important; }
-div[data-testid="stDataFrame"] div[data-testid="glideDataEditor"] .dvn-scroller { direction: rtl; }
+/* توسيط كل خلايا الجداول */
+div[data-testid="stDataFrame"] td,
+div[data-testid="stDataFrame"] th {
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+}
+/* ضمان ظهور النص كامل في الخلايا */
+div[data-testid="stDataFrame"] [class*="cell"] {
+    text-align: center !important;
+    overflow: visible !important;
+}
+/* توسيط عناوين الجداول */
+div[data-testid="stDataFrame"] span[class*="header"] {
+    text-align: center !important;
+    justify-content: center !important;
+}
+/* إصلاح عرض النص العربي في الجداول */
+div[data-testid="stDataFrame"] * {
+    font-family: 'Cairo', sans-serif !important;
+}
 </style>""", unsafe_allow_html=True)
 st.markdown("""
 <style>
@@ -1181,11 +1199,13 @@ if menu == "📊 لوحة التحكم":
     if not adf.empty:
         st.dataframe(adf, use_container_width=True, hide_index=True,
                      column_config={
-                         "القيمة":   st.column_config.NumberColumn(format="%.0f ر"),
-                         "الكمية":   st.column_config.NumberColumn(format="%d"),
-                         "الطلبية":  st.column_config.TextColumn(width="large"),
-                         "العميل":   st.column_config.TextColumn(width="large"),
-                         "السعة":    st.column_config.TextColumn(width="medium"),
+                         "القيمة":      st.column_config.NumberColumn(format="%.0f ر", width="medium"),
+                         "الكمية":      st.column_config.NumberColumn(format="%d", width="small"),
+                         "الطلبية":     st.column_config.TextColumn(width="large"),
+                         "العميل":      st.column_config.TextColumn(width="medium"),
+                         "السعة":       st.column_config.TextColumn(width="small"),
+                         "الحالة":      st.column_config.TextColumn(width="small"),
+                         "الاستخدام":   st.column_config.TextColumn(width="small"),
                      })
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
@@ -4416,8 +4436,16 @@ elif menu == "👷 العمال والأجور":
         st.markdown("#### قائمة العمال")
         wlist = run_query("SELECT name,iqama_id,COALESCE(start_date::text,'—') as start_date,COALESCE(base_salary,0) as الراتب,COALESCE(job_title,'—') as الوظيفة FROM workers ORDER BY name")
         if not wlist.empty:
-            st.dataframe(wlist.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','start_date':'تاريخ الالتحاق'}),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                wlist.rename(columns={'name':'الاسم','iqama_id':'رقم الإقامة','start_date':'تاريخ الالتحاق'}),
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "الاسم":           st.column_config.TextColumn(width="medium"),
+                    "رقم الإقامة":     st.column_config.TextColumn(width="medium"),
+                    "تاريخ الالتحاق":  st.column_config.TextColumn(width="medium"),
+                    "الراتب":          st.column_config.NumberColumn(format="%.0f ر", width="medium"),
+                    "الوظيفة":         st.column_config.TextColumn(width="medium"),
+                })
 
     # ===== تبويب 2: تعديل / حذف عامل =====
     with tabs[1]:
@@ -4796,7 +4824,7 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
 
     # ===== تبويب 6: الرواتب =====
     with tabs[5]:
-        st.markdown("#### مسير الرواتب")
+        st.markdown("#### ملخص الراتب")
         slk = st.session_state.slk
         wdf2 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(start_date,CURRENT_DATE) as start_date FROM workers ORDER BY name")
         if wdf2.empty:
@@ -4879,7 +4907,10 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
                 ])], ignore_index=True)
 
             st.dataframe(sal_summary_df, use_container_width=True, hide_index=True,
-                         column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f")})
+                         column_config={
+                             "البيان":       st.column_config.TextColumn(width="large"),
+                             "المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f ر", width="medium"),
+                         })
 
             if net_sal3 <= 0.5:
                 st.error("⛔ لا يوجد راتب مستحق — السلف والخصومات تعادل أو تتجاوز المستحق.")
@@ -4895,21 +4926,21 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
                         min_value=0.01, max_value=float(remaining_to_pay),
                         value=float(remaining_to_pay), key=f"sal_pay_amt_{slk}")
                     if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
-                        net_sal3 = actual_pay  # المبلغ المدفوع فعلاً
+                        net_sal3 = actual_pay
                         ok_sal = run_write(
                             "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
                             {"w": int(wid2), "my": month_str3, "b": float(base3), "a": float(adv_total3+ded_total3), "n": float(net_sal3)})
-                    if ok_sal:
-                        run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'", {"w": int(wid2)})
-                        # الباقي غير المدفوع = إجمالي المستحق - ما دُفع فعلاً هذا الشهر
-                        total_paid_now = paid_this_month + float(net_sal3)
-                        unpaid = max(0, round(total_due3 - adv_total3 - ded_total3 - total_paid_now, 2))
-                        run_write("""INSERT INTO worker_balance(worker_id, carried_over, last_updated)
-                                     VALUES(:w, :c, CURRENT_DATE)
-                                     ON CONFLICT(worker_id) DO UPDATE SET carried_over=:c, last_updated=CURRENT_DATE""",
-                                  {"w": int(wid2), "c": unpaid})
-                        if unpaid > 0:
-                            st.info(f"🔁 سيُرحَّل للشهر القادم: {unpaid:,.2f} ريال")
+                        if ok_sal:
+                            run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'", {"w": int(wid2)})
+                            # الباقي غير المدفوع = إجمالي المستحق - ما دُفع فعلاً هذا الشهر
+                            total_paid_now = paid_this_month + float(net_sal3)
+                            unpaid = max(0, round(total_due3 - adv_total3 - ded_total3 - total_paid_now, 2))
+                            run_write("""INSERT INTO worker_balance(worker_id, carried_over, last_updated)
+                                         VALUES(:w, :c, CURRENT_DATE)
+                                         ON CONFLICT(worker_id) DO UPDATE SET carried_over=:c, last_updated=CURRENT_DATE""",
+                                      {"w": int(wid2), "c": unpaid})
+                            if unpaid > 0:
+                                st.info(f"🔁 سيُرحَّل للشهر القادم: {unpaid:,.2f} ريال")
                         today_str3 = today3.strftime("%Y/%m/%d")
                         rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
                         _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
