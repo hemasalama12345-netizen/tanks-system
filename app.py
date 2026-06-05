@@ -274,11 +274,13 @@ def ensure_workers_columns():
         "ALTER TABLE workers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
         "ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
         "ALTER TABLE worker_advances ADD COLUMN IF NOT EXISTS created_at DATE DEFAULT CURRENT_DATE",
+        "ALTER TABLE worker_attendance ADD COLUMN IF NOT EXISTS excuse_type TEXT DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS worker_attendance(
             id SERIAL PRIMARY KEY,
             worker_id INTEGER REFERENCES workers(id),
             att_date DATE NOT NULL DEFAULT CURRENT_DATE,
             status TEXT DEFAULT 'حاضر',
+            excuse_type TEXT DEFAULT '',
             notes TEXT DEFAULT '',
             UNIQUE(worker_id, att_date))""",
         """CREATE TABLE IF NOT EXISTS worker_deductions(
@@ -4416,7 +4418,7 @@ elif menu == "👷 العمال والأجور":
     with tabs[2]:
         st.markdown("#### اعتماد سلفة")
         ak = st.session_state.ak
-        wdf = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary FROM workers ORDER BY name")
+        wdf = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(start_date,CURRENT_DATE) as start_date FROM workers ORDER BY name")
         if wdf.empty:
             st.info("أضف عمالاً أولاً.")
         else:
@@ -4427,9 +4429,17 @@ elif menu == "👷 العمال والأجور":
 
             # حساب المستحق حتى اليوم
             today = datetime.date.today()
-            days_in_month = 30
-            days_worked = today.day
-            earned_today = round(base_sal / days_in_month * days_worked, 2)
+            # حساب الأيام من تاريخ الالتحاق الفعلي
+            _start_adv = wrow.get('start_date', today.replace(day=1))
+            if hasattr(_start_adv, 'date'): _start_adv = _start_adv.date()
+            elif isinstance(_start_adv, str):
+                try: _start_adv = datetime.date.fromisoformat(str(_start_adv))
+                except: _start_adv = today.replace(day=1)
+            days_worked = max(1, (today - _start_adv).days + 1)
+            daily_rate_adv = round(base_sal / 30, 2)
+            # خصم أيام الغياب بدون عذر
+            absent_adv = int(run_query("SELECT COUNT(*) as c FROM worker_attendance WHERE worker_id=:w AND status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='')",{"w":int(wid)})['c'].iloc[0])
+            earned_today = round(daily_rate_adv * max(0, days_worked - absent_adv), 2)
 
             # السلف المدفوعة هذا الشهر
             month_str = today.strftime("%Y-%m")
@@ -4724,72 +4734,117 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
     # ===== تبويب 5: حضور وانصراف =====
     with tabs[4]:
         st.markdown("#### تسجيل الحضور والانصراف")
-        wdf_att = run_query("SELECT id,name FROM workers ORDER BY name")
+        wdf_att = run_query("SELECT id,name,COALESCE(start_date,CURRENT_DATE) as start_date FROM workers ORDER BY name")
         if wdf_att.empty:
             st.info("لا يوجد عمال.")
         else:
             att_date = st.date_input("تاريخ الحضور:", datetime.date.today(), key="att_date")
-            st.markdown(f"**تسجيل حضور يوم: {att_date}**")
 
-            # عرض حالة كل عامل لهذا اليوم
-            for _,wr in wdf_att.iterrows():
+            # جلب كل سجلات الحضور لهذا اليوم دفعة واحدة
+            att_today_all = run_query(
+                "SELECT worker_id, status, excuse_type FROM worker_attendance WHERE att_date=:d",
+                {"d": str(att_date)})
+            att_today_map = {}
+            if not att_today_all.empty:
+                for _, row in att_today_all.iterrows():
+                    att_today_map[int(row['worker_id'])] = {
+                        "status": row['status'],
+                        "excuse": row.get('excuse_type','')
+                    }
+
+            st.markdown(f"**تسجيل حضور يوم: {att_date}**")
+            st.info("✅ العمال المسجل حضورهم/غيابهم اليوم لن يظهروا مرة ثانية")
+
+            any_pending = False
+            for _, wr in wdf_att.iterrows():
                 wid_a = int(wr['id'])
-                existing = run_query(
-                    "SELECT status FROM worker_attendance WHERE worker_id=:w AND att_date=:d",
-                    {"w":wid_a,"d":att_date})
-                cur_status = existing['status'].iloc[0] if not existing.empty else None
-                col_n,col_s,col_btn = st.columns([3,2,1])
+                if wid_a in att_today_map:
+                    continue  # مسجل مسبقاً — لا يظهر
+                any_pending = True
+                col_n, col_s, col_e, col_btn = st.columns([3, 2, 2, 1])
                 col_n.write(f"👤 {wr['name']}")
-                status_opts = ["حاضر","غائب","إجازة","مأمورية"]
-                default_idx = status_opts.index(cur_status) if cur_status in status_opts else 0
-                new_status = col_s.selectbox("", status_opts,
-                                              index=default_idx,
+                new_status = col_s.selectbox("", ["حاضر","غائب","إجازة","مأمورية"],
                                               key=f"att_{wid_a}_{att_date}",
                                               label_visibility="collapsed")
+                excuse_val = ""
+                if new_status == "غائب":
+                    excuse_type = col_e.selectbox("", ["بدون عذر","بعذر"],
+                                                   key=f"exc_{wid_a}_{att_date}",
+                                                   label_visibility="collapsed")
+                    if excuse_type == "بعذر":
+                        excuse_val = st.text_input(f"نوع العذر ({wr['name']}):",
+                                                    key=f"exc_txt_{wid_a}_{att_date}",
+                                                    placeholder="مثال: مرض، إجازة طارئة...")
+                    else:
+                        excuse_val = "بدون عذر"
                 if col_btn.button("✅", key=f"att_save_{wid_a}_{att_date}"):
-                    try:
-                        run_write("""INSERT INTO worker_attendance(worker_id,att_date,status)
-                                   VALUES(:w,:d,:s)
-                                   ON CONFLICT(worker_id,att_date)
-                                   DO UPDATE SET status=EXCLUDED.status""",
-                                  {"w":int(wid_a),"d":str(att_date),"s":str(new_status)})
-                    except Exception:
-                        run_write("UPDATE worker_attendance SET status=:s WHERE worker_id=:w AND att_date=:d",
-                                  {"s":str(new_status),"w":int(wid_a),"d":str(att_date)})
-                    st.success(f"✅ تم حفظ حضور {wr['name']}")
+                    run_write("""INSERT INTO worker_attendance(worker_id,att_date,status,excuse_type)
+                               VALUES(:w,:d,:s,:e)
+                               ON CONFLICT(worker_id,att_date) DO NOTHING""",
+                              {"w": wid_a, "d": str(att_date), "s": new_status, "e": excuse_val})
+                    # غياب بدون عذر → خصم تلقائي
+                    if new_status == "غائب" and excuse_val == "بدون عذر":
+                        wrow_info = run_query("SELECT COALESCE(base_salary,0) as s FROM workers WHERE id=:w",{"w":wid_a})
+                        if not wrow_info.empty:
+                            daily = round(float(wrow_info['s'].iloc[0]) / 30, 2)
+                            run_write("""INSERT INTO worker_deductions(worker_id,amount,reason,deduction_date)
+                                        VALUES(:w,:a,:r,CURRENT_DATE)""",
+                                      {"w": wid_a, "a": daily,
+                                       "r": f"غياب بدون عذر — {att_date}"})
+                    st.success(f"✅ تم تسجيل {new_status} للعامل {wr['name']}" +
+                               (" — خُصم يوم تلقائياً 💸" if new_status=="غائب" and excuse_val=="بدون عذر" else ""))
+                    run_query.clear()
+
+            if not any_pending:
+                st.success("✅ تم تسجيل حضور/غياب جميع العمال لهذا اليوم")
+
+            # عرض ملخص اليوم
+            if att_today_map:
+                st.markdown("---")
+                st.markdown(f"**ملخص يوم {att_date}:**")
+                sum_data = []
+                for wid_s, info in att_today_map.items():
+                    wname = wdf_att[wdf_att['id']==wid_s]['name'].values
+                    if len(wname):
+                        sum_data.append({"العامل": wname[0], "الحالة": info['status'],
+                                         "العذر": info.get('excuse','') or '—'})
+                if sum_data:
+                    st.dataframe(pd.DataFrame(sum_data), use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            # تقرير الحضور للفترة
-            st.markdown("#### 📊 تقرير الحضور")
-            ra1,ra2 = st.columns(2)
+            st.markdown("#### 📊 تقرير الحضور والغياب")
+            ra1, ra2 = st.columns(2)
             att_from = ra1.date_input("من:", datetime.date.today().replace(day=1), key="att_from")
             att_to   = ra2.date_input("إلى:", datetime.date.today(), key="att_to")
-            att_rep  = run_query("""SELECT w.name,
-                COUNT(CASE WHEN a.status='حاضر' THEN 1 END) as حضور,
-                COUNT(CASE WHEN a.status='غائب' THEN 1 END) as غياب,
-                COUNT(CASE WHEN a.status='إجازة' THEN 1 END) as إجازة,
-                COUNT(CASE WHEN a.status='مأمورية' THEN 1 END) as مأمورية,
-                COUNT(a.id) as إجمالي_مسجل
+            att_rep  = run_query("""
+                SELECT w.name,
+                    COUNT(CASE WHEN a.status='حاضر' THEN 1 END) as حضور,
+                    COUNT(CASE WHEN a.status='غائب' AND (a.excuse_type='بدون عذر' OR a.excuse_type='') THEN 1 END) as غياب_بدون_عذر,
+                    COUNT(CASE WHEN a.status='غائب' AND a.excuse_type NOT IN ('بدون عذر','') AND a.excuse_type IS NOT NULL THEN 1 END) as غياب_بعذر,
+                    COUNT(CASE WHEN a.status='إجازة' THEN 1 END) as إجازة,
+                    COUNT(CASE WHEN a.status='مأمورية' THEN 1 END) as مأمورية,
+                    COUNT(a.id) as إجمالي_مسجل
                 FROM workers w
                 LEFT JOIN worker_attendance a ON a.worker_id=w.id
                     AND a.att_date BETWEEN :s AND :e
-                GROUP BY w.id,w.name ORDER BY w.name""",
-                {"s":att_from,"e":att_to})
+                GROUP BY w.id, w.name ORDER BY w.name""",
+                {"s": att_from, "e": att_to})
+
             if not att_rep.empty:
                 st.dataframe(att_rep, use_container_width=True, hide_index=True)
-                # زر تقرير HTML احترافي
                 if st.button("🖨️ طباعة تقرير الحضور (HTML)", key="att_print_btn"):
                     today_rpt = datetime.date.today().strftime("%Y/%m/%d")
                     rows_html = ""
-                    for _,r in att_rep.iterrows():
-                        total = int(r.get('إجمالي_مسجل',0))
-                        pct = round(int(r.get('حضور',0))/total*100) if total>0 else 0
+                    for _, r in att_rep.iterrows():
+                        total = int(r.get('إجمالي_مسجل', 0))
+                        pct = round(int(r.get('حضور', 0)) / total * 100) if total > 0 else 0
                         rows_html += f"""<tr>
                           <td>{r['name']}</td>
                           <td class="center g">{int(r.get('حضور',0))}</td>
-                          <td class="center r">{int(r.get('غياب',0))}</td>
-                          <td class="center y">{int(r.get('إجازة',0))}</td>
-                          <td class="center b">{int(r.get('مأمورية',0))}</td>
+                          <td class="center r">{int(r.get('غياب_بدون_عذر',0))}</td>
+                          <td class="center y">{int(r.get('غياب_بعذر',0))}</td>
+                          <td class="center b">{int(r.get('إجازة',0))}</td>
+                          <td class="center">{int(r.get('مأمورية',0))}</td>
                           <td class="center">{total}</td>
                           <td class="center"><span class="pct">{pct}%</span></td>
                         </tr>"""
@@ -4800,32 +4855,26 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{font-family:'Cairo',sans-serif;background:#fff;color:#1e293b;padding:28px;}}
 .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}}
-.hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
 .period{{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;color:#1E3A8A;}}
 table{{width:100%;border-collapse:collapse;margin-top:10px;}}
 th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:13px;}}
 th:first-child{{text-align:right;}}
 td{{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
 td.center{{text-align:center;font-weight:700;}}
-tr:nth-child(even){{background:#f8fafc;}}
-tr:hover{{background:#eff6ff;}}
+tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
 .g{{color:#16a34a;}} .r{{color:#dc2626;}} .y{{color:#d97706;}} .b{{color:#2563eb;}}
 .pct{{background:#dbeafe;color:#1E3A8A;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:800;}}
 .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
 @media print{{body{{padding:10px;}}}}
 </style></head><body>
 <div class="hdr">
-  <div>
-    <h1>🏭 {FACTORY_NAME}</h1>
-    <p>{FACTORY_ADDRESS}</p>
-    <p>تقرير الحضور والغياب</p>
-  </div>
+  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>تقرير الحضور والغياب</p></div>
   <div class="period">الفترة: {att_from} → {att_to}</div>
 </div>
 <table>
 <thead><tr>
-  <th>اسم العامل</th><th>حاضر</th><th>غائب</th><th>إجازة</th><th>مأمورية</th><th>إجمالي مسجل</th><th>نسبة الحضور</th>
+  <th>اسم العامل</th><th>حاضر</th><th>غياب بدون عذر</th><th>غياب بعذر</th><th>إجازة</th><th>مأمورية</th><th>إجمالي مسجل</th><th>نسبة الحضور</th>
 </tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
@@ -4841,110 +4890,172 @@ tr:hover{{background:#eff6ff;}}
             else:
                 st.info("لا توجد بيانات حضور.")
 
-    # ===== تبويب 6 (الرواتب) = تبويب 3 القديم =====
-    # تبويب 7 (سجل العمال) = تبويب 4 القديم
-
-    # ===== تبويب 5b: تقرير رواتب HTML =====
+    # ===== تبويب 6: الرواتب =====
     with tabs[5]:
-        st.markdown("#### 📊 تقرير مسير الرواتب")
-        sr1,sr2 = st.columns(2)
-        sal_rpt_from = sr1.date_input("من:", datetime.date.today().replace(day=1), key="sal_rpt_from")
-        sal_rpt_to   = sr2.date_input("إلى:", datetime.date.today(), key="sal_rpt_to")
-
-        # جلب كل العمال مع ملخص رواتبهم في الفترة
-        all_workers_sal = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title FROM workers ORDER BY name")
-        if all_workers_sal.empty:
-            st.info("لا يوجد عمال.")
+        st.markdown("#### مسير الرواتب")
+        slk = st.session_state.slk
+        wdf2 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(start_date,CURRENT_DATE) as start_date FROM workers ORDER BY name")
+        if wdf2.empty:
+            st.info("أضف عمالاً أولاً.")
         else:
-            sal_rows_data = []
-            for _,wr5 in all_workers_sal.iterrows():
-                wid5 = int(wr5['id'])
-                # السلف في الفترة
-                adv5 = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND created_at BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
-                # الخصومات في الفترة
-                ded5 = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w AND deduction_date BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
-                # الرواتب المدفوعة
-                paid5 = float(run_query("SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND payout_date BETWEEN :s AND :e",{"w":wid5,"s":str(sal_rpt_from),"e":str(sal_rpt_to)})['t'].iloc[0])
-                base5 = float(wr5['base_salary'])
-                net5  = max(0, base5 - adv5 - ded5)
-                sal_rows_data.append({"الاسم":wr5['name'],"الوظيفة":wr5['job_title'],"الراتب الأساسي":base5,"السلف":adv5,"الخصومات":ded5,"الصافي المستحق":net5,"المدفوع":paid5})
+            ws3 = st.selectbox("اختر العامل:", wdf2['name'].tolist(), key=f"sal_sel_{slk}")
+            wid2  = int(wdf2[wdf2['name']==ws3]['id'].iloc[0])
+            wrow3 = wdf2[wdf2['name']==ws3].iloc[0]
+            base3 = float(wrow3['base_salary'])
 
-            sal_df5 = pd.DataFrame(sal_rows_data)
-            st.dataframe(sal_df5, use_container_width=True, hide_index=True,
-                         column_config={c: st.column_config.NumberColumn(format="%.2f ر") for c in ["الراتب الأساسي","السلف","الخصومات","الصافي المستحق","المدفوع"]})
+            today3      = datetime.date.today()
+            start_date3 = wrow3['start_date']
+            if hasattr(start_date3, 'date'):
+                start_date3 = start_date3.date()
+            elif isinstance(start_date3, str):
+                try: start_date3 = datetime.date.fromisoformat(start_date3)
+                except: start_date3 = today3.replace(day=1)
 
-            if st.button("🖨️ طباعة مسير الرواتب (HTML)", key="sal_rpt_btn"):
-                today_sr = datetime.date.today().strftime("%Y/%m/%d")
-                sal_rows_html = ""
-                for i,r5 in sal_df5.iterrows():
-                    sal_rows_html += f"""<tr>
-                      <td>{int(i)+1}</td><td>{r5["الاسم"]}</td><td class="c">{r5["الوظيفة"]}</td>
-                      <td class="c num">{r5["الراتب الأساسي"]:,.2f}</td>
-                      <td class="c r num">{r5["السلف"]:,.2f}</td>
-                      <td class="c r num">{r5["الخصومات"]:,.2f}</td>
-                      <td class="c g num">{r5["الصافي المستحق"]:,.2f}</td>
-                      <td class="c b num">{r5["المدفوع"]:,.2f}</td>
-                    </tr>"""
-                sal_rpt_html = f"""<!DOCTYPE html>
+            # حساب أيام العمل الفعلية من تاريخ الالتحاق حتى اليوم
+            days_since_join = max(1, (today3 - start_date3).days + 1)
+            daily_rate = round(base3 / 30, 2)
+
+            # أيام الحضور الفعلي من سجل الحضور
+            att_count = run_query("""
+                SELECT
+                    COUNT(CASE WHEN status='حاضر' THEN 1 END) as present_days,
+                    COUNT(CASE WHEN status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='') THEN 1 END) as absent_no_excuse
+                FROM worker_attendance WHERE worker_id=:w AND att_date BETWEEN :s AND :e""",
+                {"w": int(wid2), "s": str(start_date3), "e": str(today3)})
+
+            present_days   = int(att_count['present_days'].iloc[0])  if not att_count.empty else 0
+            absent_no_exc  = int(att_count['absent_no_excuse'].iloc[0]) if not att_count.empty else 0
+
+            # الأيام المستحق عنها = أيام من تاريخ التعيين - غياب بدون عذر
+            paid_days  = max(0, days_since_join - absent_no_exc)
+            earned3    = round(daily_rate * paid_days, 2)
+
+            # السلف المعلقة
+            adv_total3 = float(run_query(
+                "SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",
+                {"w": int(wid2)})['t'].iloc[0])
+
+            # الخصومات الأخرى (غير السلف)
+            ded_total3 = float(run_query(
+                "SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w",
+                {"w": int(wid2)})['t'].iloc[0])
+
+            net_sal3 = max(0, earned3 - adv_total3 - ded_total3)
+
+            # الرواتب المدفوعة مسبقاً
+            month_str3 = today3.strftime("%Y-%m")
+            paid_this_month = float(run_query(
+                "SELECT COALESCE(SUM(net_paid),0) as t FROM worker_salaries WHERE worker_id=:w AND month_year=:m",
+                {"w": int(wid2), "m": month_str3})['t'].iloc[0])
+
+            sal_summary_df = pd.DataFrame([
+                {"البيان": "📌 الراتب الشهري الأساسي",                       "المبلغ (ريال)": round(base3, 2)},
+                {"البيان": f"📅 أيام من تاريخ الالتحاق حتى اليوم",            "المبلغ (ريال)": days_since_join},
+                {"البيان": f"🔴 غياب بدون عذر (خصم {absent_no_exc} يوم)",    "المبلغ (ريال)": round(absent_no_exc * daily_rate, 2)},
+                {"البيان": f"✅ أيام مستحقة ({paid_days} يوم × {daily_rate:.2f})", "المبلغ (ريال)": round(earned3, 2)},
+                {"البيان": "➖ السلف المعلقة",                                "المبلغ (ريال)": round(adv_total3, 2)},
+                {"البيان": "➖ خصومات أخرى",                                  "المبلغ (ريال)": round(ded_total3, 2)},
+                {"البيان": "💰 الصافي المستحق",                               "المبلغ (ريال)": round(net_sal3, 2)},
+            ])
+            if paid_this_month > 0:
+                sal_summary_df = pd.concat([sal_summary_df, pd.DataFrame([
+                    {"البيان": "⚠️ مدفوع هذا الشهر مسبقاً", "المبلغ (ريال)": round(paid_this_month, 2)}
+                ])], ignore_index=True)
+
+            st.dataframe(sal_summary_df, use_container_width=True, hide_index=True,
+                         column_config={"المبلغ (ريال)": st.column_config.NumberColumn(format="%.2f")})
+
+            if net_sal3 <= 0.5:
+                st.error("⛔ لا يوجد راتب مستحق — السلف والخصومات تعادل أو تتجاوز المستحق.")
+            elif paid_this_month >= net_sal3:
+                st.warning(f"⚠️ تم صرف هذا الشهر مسبقاً: {paid_this_month:,.2f} ريال")
+            else:
+                if st.button("💰 اعتماد الراتب وإصدار الإيصال", type="primary", key=f"sal_btn_{slk}"):
+                    ok_sal = run_write(
+                        "INSERT INTO worker_salaries(worker_id,month_year,base_salary,advances_deducted,net_paid) VALUES(:w,:my,:b,:a,:n)",
+                        {"w": int(wid2), "my": month_str3, "b": float(base3), "a": float(adv_total3+ded_total3), "n": float(net_sal3)})
+                    if ok_sal:
+                        run_write("UPDATE worker_advances SET status='مخصومة' WHERE worker_id=:w AND status='قيد الانتظار'", {"w": int(wid2)})
+                        today_str3 = today3.strftime("%Y/%m/%d")
+                        rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
+                        _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
+                        sal_html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
 <style>
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
-.period{{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;color:#1E3A8A;text-align:center;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
-.sum-box{{background:#f8fafc;border-radius:8px;padding:12px;border-right:4px solid #1E3A8A;text-align:center;}}
-.sum-box .lbl{{font-size:11px;color:#64748b;}} .sum-box .val{{font-size:18px;font-weight:800;color:#1E3A8A;}}
-table{{width:100%;border-collapse:collapse;font-size:12px;}}
-th{{background:#1E3A8A;color:#fff;padding:10px 8px;text-align:center;}}
-td{{padding:9px 8px;border-bottom:1px solid #e2e8f0;text-align:right;}}
-td.c{{text-align:center;}} td.num{{font-family:monospace;font-size:13px;font-weight:700;}}
-td.g{{color:#16a34a;}} td.r{{color:#dc2626;}} td.b{{color:#2563eb;}}
-tr:nth-child(even){{background:#f8fafc;}}
-.total-row{{background:#dbeafe;font-weight:800;font-size:13px;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:12px;}}
-.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;height:32px;margin-bottom:6px;}}
+body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
+.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
+.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+.badge{{background:#16a34a;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+.qr-img{{width:65px;height:65px;border:2px solid #16a34a;border-radius:6px;}}
+.amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
+.amt-box .val{{font-size:24px;font-weight:800;}}
+.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
+.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #16a34a;}}
+.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
+.breakdown{{background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #86efac;}}
+.breakdown p{{font-size:12px;margin:3px 0;}}
+.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
 .sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:10px;}}}}
+.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+@media print{{body{{padding:12px;max-width:100%;}}}}
 </style></head><body>
 <div class="hdr">
-  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>مسير الرواتب الرسمي</p></div>
-  <div><div class="period">الفترة: {sal_rpt_from} → {sal_rpt_to}</div><p style="text-align:center;margin-top:6px;font-size:11px;color:#64748b;">طُبع: {today_sr}</p></div>
+  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no3}</b> | {today_str3}</p></div>
+  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+    <div class="badge">إيصال راتب</div>
+    <img class="qr-img" src="data:image/png;base64,{{_qr_sal}}" alt="QR">
+  </div>
 </div>
-<div class="summary">
-  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{sal_df5["الراتب الأساسي"].sum():,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي السلف والخصومات</div><div class="val" style="color:#dc2626;">{(sal_df5["السلف"]+sal_df5["الخصومات"]).sum():,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي الصافي المستحق</div><div class="val" style="color:#16a34a;">{sal_df5["الصافي المستحق"].sum():,.2f} ر</div></div>
+<div class="amt-box"><div><div style="font-size:12px;opacity:.85;">صافي الراتب المستحق</div></div><div class="val">{net_sal3:,.2f} ريال</div></div>
+<div class="grid2">
+  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{ws3}</div></div>
+  <div class="ig"><div class="lbl">تاريخ الالتحاق</div><div class="val">{start_date3}</div></div>
+  <div class="ig"><div class="lbl">الشهر</div><div class="val">{month_str3}</div></div>
+  <div class="ig"><div class="lbl">تاريخ الصرف</div><div class="val">{today_str3}</div></div>
 </div>
-<table>
-<thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب الأساسي</th><th>السلف</th><th>الخصومات</th><th>الصافي المستحق</th><th>المدفوع</th></tr></thead>
-<tbody>{sal_rows_html}
-<tr class="total-row"><td colspan="3" style="text-align:center;">الإجمالي</td>
-  <td class="c">{sal_df5["الراتب الأساسي"].sum():,.2f}</td>
-  <td class="c r">{sal_df5["السلف"].sum():,.2f}</td>
-  <td class="c r">{sal_df5["الخصومات"].sum():,.2f}</td>
-  <td class="c g">{sal_df5["الصافي المستحق"].sum():,.2f}</td>
-  <td class="c b">{sal_df5["المدفوع"].sum():,.2f}</td>
-</tr></tbody></table>
+<div class="breakdown">
+  <p><b>الراتب الأساسي:</b> {base3:,.2f} ريال (يومي: {daily_rate:,.2f} ريال)</p>
+  <p><b>أيام من تاريخ الالتحاق:</b> {days_since_join} يوم</p>
+  <p><b>غياب بدون عذر:</b> {absent_no_exc} يوم (خصم: {absent_no_exc*daily_rate:,.2f} ريال)</p>
+  <p><b>أيام مستحقة:</b> {paid_days} يوم = {earned3:,.2f} ريال</p>
+  <p><b>السلف المخصومة:</b> {adv_total3:,.2f} ريال</p>
+  <p><b>خصومات أخرى:</b> {ded_total3:,.2f} ريال</p>
+  <p style="border-top:1px solid #86efac;padding-top:6px;margin-top:6px;"><b>✅ الصافي المدفوع:</b> {net_sal3:,.2f} ريال</p>
+</div>
 <div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">مدير الموارد البشرية</div><div class="sig-en">HR Manager</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">المدير المالي</div><div class="sig-en">Finance Manager</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">المدير العام</div><div class="sig-en">General Manager</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div></div>
+  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div></div>
 </div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_sr}</span></div>
+<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str3}</span></div>
 </body></html>"""
-                st.download_button("⬇️ تنزيل مسير الرواتب HTML",
-                    sal_rpt_html.encode("utf-8"),
-                    f"Payroll_{sal_rpt_from}_{sal_rpt_to}.html",
-                    "text/html; charset=utf-8", key="dl_sal_rpt_html")
+                        sal_html = sal_html.replace("{_qr_sal}", _qr_sal)
+                        st.session_state.sal_rcpt  = sal_html
+                        st.session_state.sal_ready = True
+                        st.success(f"✅ راتب {net_sal3:,.2f} ريال للعامل {ws3}")
+                        st.session_state.slk += 1
+
+            if st.session_state.sal_ready and st.session_state.sal_rcpt:
+                st.download_button("🖨️ طباعة إيصال الراتب (HTML)",
+                    st.session_state.sal_rcpt.encode('utf-8'),
+                    f"Salary_{st.session_state.slk}.html",
+                    "text/html; charset=utf-8", key="dl_sal_rcpt")
+                if st.button("🆕 راتب جديد", key="new_sal"):
+                    st.session_state.sal_ready = False
+                    st.session_state.sal_rcpt  = None
+                    st.rerun()
+
+    # ===== تبويب 5b: تقرير مسير الرواتب HTML =====
+    with tabs[5]:
+        pass  # مدمج في تبويب الرواتب أعلاه
 
     # ===== تبويب 7: سجل العمال =====
     with tabs[6]:
         st.markdown("#### سجل العمال والمدفوعات")
-        wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title,COALESCE(start_date,'—') as start_date FROM workers ORDER BY name")
+        wdf4 = run_query("SELECT id,name,iqama_id,COALESCE(base_salary,0) as base_salary,COALESCE(job_title,'—') as job_title,COALESCE(start_date::text,'—') as start_date FROM workers ORDER BY name")
         if wdf4.empty:
             st.info("لا يوجد عمال.")
         else:
@@ -4957,14 +5068,12 @@ tr:nth-child(even){{background:#f8fafc;}}
                 })
                 st.dataframe(_wdf4_display, use_container_width=True, hide_index=True,
                              column_config={"الراتب الأساسي": st.column_config.NumberColumn(format="%.2f ر")})
-                # طباعة سجل كل العمال HTML
                 if st.button("🖨️ طباعة سجل العمال (HTML)", key="print_workers_btn"):
                     today_wr = datetime.date.today().strftime("%Y/%m/%d")
                     wrows_html = ""
-                    for i,(_,r) in enumerate(wdf4.iterrows(),1):
+                    for i, (_, r) in enumerate(wdf4.iterrows(), 1):
                         wrows_html += f"""<tr>
-                          <td class="center">{i}</td>
-                          <td>{r["name"]}</td>
+                          <td class="center">{i}</td><td>{r["name"]}</td>
                           <td class="center">{r["iqama_id"]}</td>
                           <td class="center">{r["job_title"]}</td>
                           <td class="center">{r["start_date"]}</td>
@@ -4977,15 +5086,13 @@ tr:nth-child(even){{background:#f8fafc;}}
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
 .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}}
-.hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
 .badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
 table{{width:100%;border-collapse:collapse;}}
 th{{background:#1E3A8A;color:#fff;padding:11px 12px;text-align:center;font-size:13px;}}
 td{{padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
 td.center{{text-align:center;}}
-tr:nth-child(even){{background:#f8fafc;}}
-tr:hover{{background:#eff6ff;}}
+tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
 .total-row{{background:#dbeafe;font-weight:800;}}
 .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
 @media print{{body{{padding:10px;}}}}
@@ -5007,6 +5114,23 @@ tr:hover{{background:#eff6ff;}}
                         "text/html; charset=utf-8", key="dl_workers_html")
             else:
                 wid4 = int(wdf4[wdf4["name"]==sw]["id"].iloc[0])
+                # ملخص العامل الكامل
+                wrow_full = run_query("SELECT COALESCE(base_salary,0) as b, COALESCE(start_date,CURRENT_DATE) as s FROM workers WHERE id=:w",{"w":wid4})
+                if not wrow_full.empty:
+                    base_w = float(wrow_full['b'].iloc[0])
+                    sd_w   = wrow_full['s'].iloc[0]
+                    if hasattr(sd_w,'date'): sd_w = sd_w.date()
+                    elif isinstance(sd_w,str):
+                        try: sd_w = datetime.date.fromisoformat(sd_w)
+                        except: sd_w = datetime.date.today()
+                    days_w   = max(1,(datetime.date.today()-sd_w).days+1)
+                    daily_w  = round(base_w/30,2)
+                    absent_w = int(run_query("SELECT COUNT(*) as c FROM worker_attendance WHERE worker_id=:w AND status='غائب' AND (excuse_type='بدون عذر' OR excuse_type='')",{"w":wid4})['c'].iloc[0])
+                    adv_w    = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_advances WHERE worker_id=:w AND status='قيد الانتظار'",{"w":wid4})['t'].iloc[0])
+                    ded_w    = float(run_query("SELECT COALESCE(SUM(amount),0) as t FROM worker_deductions WHERE worker_id=:w",{"w":wid4})['t'].iloc[0])
+                    earned_w = round(daily_w*max(0,days_w-absent_w),2)
+                    net_w    = max(0,earned_w-adv_w-ded_w)
+                    st.info(f"📊 منذ الالتحاق: {days_w} يوم | غياب بدون عذر: {absent_w} يوم | مستحق: {earned_w:,.2f} ر | سلف: {adv_w:,.2f} ر | صافي: {net_w:,.2f} ر")
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.markdown("**السلف:**")
@@ -5016,6 +5140,10 @@ tr:hover{{background:#eff6ff;}}
                     st.markdown("**الرواتب المدفوعة:**")
                     sal_hist = run_query("SELECT month_year,base_salary,advances_deducted,net_paid,payout_date FROM worker_salaries WHERE worker_id=:w ORDER BY payout_date DESC",{"w":wid4})
                     st.dataframe(sal_hist if not sal_hist.empty else pd.DataFrame({"الحالة":["لا توجد"]}), use_container_width=True, hide_index=True)
+                st.markdown("**سجل الحضور والغياب:**")
+                att_hist = run_query("SELECT att_date,status,excuse_type FROM worker_attendance WHERE worker_id=:w ORDER BY att_date DESC LIMIT 30",{"w":wid4})
+                st.dataframe(att_hist.rename(columns={'att_date':'التاريخ','status':'الحالة','excuse_type':'العذر'}) if not att_hist.empty else pd.DataFrame({"الحالة":["لا يوجد"]}), use_container_width=True, hide_index=True)
+
 
 # ==========================================
 # [7] النظام المحاسبي
