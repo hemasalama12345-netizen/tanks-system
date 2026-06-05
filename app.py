@@ -19,8 +19,9 @@ try:
 except ImportError:
     pass
 
+@st.cache_data(ttl=3600)
 def make_qr_b64(text, color=(0,0,0), module_size=10, quiet=4):
-    """توليد QR Code — qrcode library أولاً ثم API"""
+    """توليد QR Code — cache ساعة كاملة"""
     # 1. qrcode library (Streamlit Cloud بعد install)
     if _QRCODE_LIB is not None:
         try:
@@ -44,8 +45,9 @@ def make_qr_b64(text, color=(0,0,0), module_size=10, quiet=4):
     # 2. API fallback
     return _make_qr_fallback(text, color, module_size, quiet)
 
+@st.cache_data(ttl=3600)
 def _make_qr_fallback(text, color=(0,0,0), module_size=10, quiet=4):
-    """QR عبر api.qrserver.com — يعمل على Streamlit Cloud دائماً"""
+    """QR عبر api.qrserver.com — cache ساعة كاملة لنفس النص"""
     import urllib.parse, urllib.request
     try:
         encoded = urllib.parse.quote(text)
@@ -202,9 +204,11 @@ except Exception as e:
     st.error(f"خطأ في الاتصال: {e}")
     st.stop()
 
+@st.cache_data(ttl=30)
 def run_query(query, params=None):
+    """cache 30 ثانية — يقلل الضغط على DB بشكل كبير"""
     try:
-        return conn.query(query, params=params, ttl=0)
+        return conn.query(query, params=params, ttl=30)
     except Exception as e:
         st.error(f"خطأ: {e}")
         return pd.DataFrame()
@@ -214,6 +218,8 @@ def run_write(query, params=None):
         with conn.session as s:
             s.execute(text(query), params or {})
             s.commit()
+        # مسح الكاش بعد أي كتابة عشان البيانات تتحدث
+        run_query.clear()
         return True
     except Exception as e:
         st.error(f"خطأ: {e}")
