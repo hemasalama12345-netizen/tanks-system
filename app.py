@@ -3524,13 +3524,27 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         tu  = _sv(tank_use)
         tt  = _sv(tank_type)
 
-        # توليد QR لكل بطاقة — API مباشرة لضمان جودة عالية وقراءة سليمة
+        # ترجمة الاستخدام ونوع التركيب للإنجليزي ASCII فقط
+        _use_en_map = {"ماء":"Water","صرف":"Sewage","ديزل":"Diesel","حريق":"Fire","مياه":"Water"}
+        tu_en = _use_en_map.get(str(tank_use).strip(), "Tank")
+        _type_en_map = {"دفان":"Underground","سطحي":"Above-Ground","علوي":"Elevated"}
+        tt_en = _type_en_map.get(str(tank_type).strip(), str(tank_type).encode("ascii","replace").decode())
+
+        # توليد QR لكل بطاقة — نص إنجليزي ASCII فقط لضمان القراءة على أي جهاز
         cards_data = []
         for i, sn in enumerate(serials_list):
             qr_text = (
-                f"SN:{sn}|ORDER:{order_id}|"
-                f"CAPACITY:{tc}|USE:{tu}|TYPE:{tt}|"
-                f"DATE:{today_str}|SEQ:{i+1}/{len(serials_list)}"
+                f"SN: {sn}
+"
+                f"Capacity: {tc} L
+"
+                f"Use: {tu_en}
+"
+                f"Type: {tt_en}
+"
+                f"Order: {order_id}
+"
+                f"Date: {today_str}"
             )
             qr_b64 = _make_qr_fallback(qr_text, color=(30,58,138), module_size=10)
             cards_data.append({
