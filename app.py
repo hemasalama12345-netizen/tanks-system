@@ -293,29 +293,24 @@ except Exception:
 def make_tank_label_html(sn, order_id, customer_name, tank_use,
                          tank_capacity, tank_type, delivery_date,
                          factory_name, factory_address, seq, total):
-    """صفحة HTML مستقلة لكل خزان — تحتوي QR + كل البيانات"""
-    # QR: نص منسق يظهر بوضوح على أي موبايل عند المسح
+    """صفحة HTML مستقلة لكل خزان — QR يتولد بـ JavaScript (يضمن القراءة دائماً)"""
     def _safe(s):
-        """تنظيف النص — يبقي العربي والإنجليزي والأرقام"""
-        return str(s).replace('\n',' ').replace('|','_').strip()
+        return str(s).replace('"',' ').replace("'",' ').replace('\n',' ').replace('\r',' ').replace('\\',' ').strip()
 
-    # ترجمة نوع الاستخدام
     _use_map = {'ماء':'Water','صرف':'Sewage','ديزل':'Diesel','حريق':'Fire'}
     _use_en = _use_map.get(str(tank_use), str(tank_use))
 
+    # النص الكامل في الـ QR — بالعربي والإنجليزي
     qr_text = (
-        f"SN:{_safe(sn)}"
-        f" ORD:{_safe(order_id)}"
-        f" CAP:{_safe(tank_capacity)}"
-        f" USE:{_use_en}"
-        f" DATE:{_safe(delivery_date)}"
-        f" SEQ:{seq}/{total}"
-        f" MFG:{_safe(factory_name)}"
-        f" CLIENT:{_safe(customer_name)}"
+        f"SN:{_safe(sn)} ORD:{_safe(order_id)} "
+        f"CAP:{_safe(tank_capacity)} USE:{_use_en} "
+        f"DATE:{_safe(delivery_date)} SEQ:{seq}/{total} "
+        f"CLIENT:{_safe(customer_name)} MFG:{_safe(factory_name)}"
     )
-    qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=10)
+
     return f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -326,7 +321,8 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
 .header h1{{color:#1E3A8A;font-size:22px;font-weight:800;}}
 .header p{{color:#64748b;font-size:12px;}}
 .qr-section{{display:flex;flex-direction:column;align-items:center;gap:16px;flex:1;justify-content:center;}}
-.qr-img{{width:220px;height:220px;border:4px solid #1E3A8A;border-radius:12px;}}
+#qr-box{{width:220px;height:220px;border:4px solid #1E3A8A;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;}}
+#qr-box canvas,#qr-box img{{width:210px!important;height:210px!important;}}
 .serial{{font-size:22px;font-weight:800;color:#1E3A8A;letter-spacing:2px;text-align:center;}}
 .info-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;width:100%;margin-top:16px;}}
 .info-card{{background:#f1f5f9;border-radius:8px;padding:12px;border-right:4px solid #1E3A8A;}}
@@ -343,7 +339,7 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
     <p style="margin-top:6px;font-weight:700;color:#1E3A8A;">بطاقة تعريف خزان فايبرجلاس</p>
   </div>
   <div class="qr-section">
-    <img class="qr-img" src="data:image/png;base64,{qr_b64}" alt="QR Code">
+    <div id="qr-box"></div>
     <div class="serial">{sn}</div>
     <div class="seq-badge">خزان {seq} من {total}</div>
     <div class="info-grid">
@@ -360,7 +356,18 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
     <span>امسح QR للتحقق من البيانات</span>
   </div>
 </div>
+<script>
+new QRCode(document.getElementById("qr-box"), {{
+  text: "{qr_text}",
+  width: 210,
+  height: 210,
+  colorDark: "#1E3A8A",
+  colorLight: "#ffffff",
+  correctLevel: QRCode.CorrectLevel.M
+}});
+</script>
 </body></html>"""
+
 
 def generate_invoice_number(delivery_id):
     """
@@ -3512,28 +3519,20 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         tc  = _sv(tank_capacity)
         tu  = _sv(tank_use)
         tt  = _sv(tank_type)
-        tank_desc_ar = f"خزان {tu} — سعة {tc} — {tt}"
-        tank_desc_en = f"Tank {tu} | Capacity: {tc} | {tt}"
-        labels_data = []
-        for i,sn in enumerate(serials_list):
-            qr_text = (
-                f"SN:{sn}"
-                f" ORD:{order_id}"
-                f" CAP:{tc}"
-                f" USE:{tu}"
-                f" DATE:{today_str}"
-                f" SEQ:{i+1}/{len(serials_list)}"
-                f" CLIENT:{customer_name}"
-                f" MFG:{FACTORY_NAME}"
-            )
-            labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
-        # توليد QR لكل بطاقة
-        for item in labels_data:
-            item['qr_b64'] = make_qr_b64(item['qr_text'], color=(30,58,138), module_size=9)
 
-        # كل بطاقة في صفحة A4 مستقلة
+        def _safe(s):
+            return str(s).replace('"',' ').replace("'",' ').replace('\n',' ').replace('\\',' ').strip()
+
+        # كل بطاقة في صفحة A4 مستقلة — QR يتولد بـ JavaScript
         label_pages = ""
-        for item in labels_data:
+        for i, sn in enumerate(serials_list):
+            qr_text = (
+                f"SN:{_safe(sn)} ORD:{_safe(order_id)} "
+                f"CAP:{_safe(tc)} USE:{_safe(tu)} "
+                f"DATE:{_safe(today_str)} SEQ:{i+1}/{len(serials_list)} "
+                f"CLIENT:{_safe(customer_name)} MFG:{_safe(FACTORY_NAME)}"
+            )
+            qr_id = f"qr_{i}_{sn.replace('-','_')}"
             label_pages += f"""
 <div class="a4-page">
   <div class="card">
@@ -3553,12 +3552,20 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
     </div>
     <div class="card-body">
       <div class="qr-section">
-        <img src="data:image/png;base64,{item['qr_b64']}" class="qr-box" style="display:block;width:130px;height:130px;border:3px solid #1E3A8A;border-radius:8px;" alt="QR">
+        <div id="{qr_id}" class="qr-box"></div>
+        <script>
+        new QRCode(document.getElementById("{qr_id}"), {{
+          text: "{qr_text}",
+          width: 124, height: 124,
+          colorDark: "#1E3A8A", colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        }});
+        </script>
         <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
-        <div class="seq-badge">خزان {item['index']} من {len(serials_list)}<br>Tank {item['index']} of {len(serials_list)}</div>
+        <div class="seq-badge">خزان {i+1} من {len(serials_list)}<br>Tank {i+1} of {len(serials_list)}</div>
       </div>
       <div class="info-section">
-        <div class="sn-display">{item['sn']}</div>
+        <div class="sn-display">{sn}</div>
         <div class="info-grid-card">
           <div class="ig-item"><span class="ig-lbl">نوع الاستخدام</span><span class="ig-val">{tu}</span></div>
           <div class="ig-item"><span class="ig-lbl">Type of Use</span><span class="ig-val ltr">{tu}</span></div>
@@ -3586,6 +3593,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -3624,8 +3632,9 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
   width:130px;height:130px;
   border:3px solid #1E3A8A;border-radius:10px;
   overflow:hidden;background:#fff;
+  display:flex;align-items:center;justify-content:center;
 }}
-.qr-box canvas,.qr-box img{{width:130px!important;height:130px!important;display:block;}}
+.qr-box canvas,.qr-box img{{width:124px!important;height:124px!important;display:block;}}
 .qr-caption{{font-size:11px;color:#64748b;text-align:center;line-height:1.6;}}
 .seq-badge{{
   background:#1E3A8A;color:#fff;
@@ -3662,7 +3671,6 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 </head>
 <body>
 {label_pages}
-
 </body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
