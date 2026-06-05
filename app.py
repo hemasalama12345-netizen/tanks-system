@@ -1198,30 +1198,42 @@ if menu == "📊 لوحة التحكم":
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
     if not adf.empty:
+        # debug مؤقت — اعرض أسماء الأعمدة الفعلية
+        st.caption("أعمدة الجدول: " + ", ".join(adf.columns.tolist()))
         # بناء صفوف الجدول
         rows_html = ""
+        # نضمن ترتيب الأعمدة صح بغض النظر عن أسماءها
+        col_names = list(adf.columns)
+        def gcol(r, name, default="—"):
+            # جرب الاسم العربي أولاً، ثم iloc بالترتيب
+            if name in r.index:
+                val = r[name]
+                return "" if (val is None or (isinstance(val, float) and str(val) == "nan")) else str(val)
+            return default
         for i, (_, r) in enumerate(adf.iterrows()):
-            status_color = "#16a34a" if str(r.get("الحالة","")) == "مكتملة" else "#f59e0b"
+            status_val = gcol(r, "الحالة", "")
+            status_color = "#16a34a" if status_val == "مكتملة" else "#f59e0b"
             row_bg = "#f8fafc" if i % 2 == 0 else "#ffffff"
-            qty_val = r.get("الكمية", "")
+            qty_val = gcol(r, "الكمية", "0")
             try:
                 qty_str = str(int(float(qty_val)))
             except Exception:
-                qty_str = str(qty_val)
+                qty_str = qty_val
+            price_val = gcol(r, "القيمة", "0")
             try:
-                price_str = "{:,.0f} ر".format(float(r.get("القيمة", 0)))
+                price_str = "{:,.0f} ر".format(float(price_val))
             except Exception:
-                price_str = str(r.get("القيمة", ""))
+                price_str = price_val
             td = "padding:9px 14px;border-bottom:1px solid #e2e8f0;"
             rows_html += (
                 '<tr style="background:' + row_bg + ';">'
-                + '<td style="' + td + 'font-weight:700;color:#1E3A8A;white-space:nowrap;">' + str(r.get("الطلبية","")) + '</td>'
-                + '<td style="' + td + 'white-space:nowrap;">' + str(r.get("العميل","")) + '</td>'
+                + '<td style="' + td + 'font-weight:700;color:#1E3A8A;white-space:nowrap;">' + gcol(r,"الطلبية") + '</td>'
+                + '<td style="' + td + 'white-space:nowrap;">' + gcol(r,"العميل") + '</td>'
                 + '<td style="' + td + 'text-align:center;">' + qty_str + '</td>'
                 + '<td style="' + td + 'text-align:center;font-family:monospace;white-space:nowrap;">' + price_str + '</td>'
-                + '<td style="' + td + 'text-align:center;color:' + status_color + ';font-weight:600;">' + str(r.get("الحالة","")) + '</td>'
-                + '<td style="' + td + 'text-align:center;">' + str(r.get("السعة","—")) + '</td>'
-                + '<td style="' + td + 'text-align:center;">' + str(r.get("الاستخدام","—")) + '</td>'
+                + '<td style="' + td + 'text-align:center;color:' + status_color + ';font-weight:600;">' + status_val + '</td>'
+                + '<td style="' + td + 'text-align:center;">' + gcol(r,"السعة") + '</td>'
+                + '<td style="' + td + 'text-align:center;">' + gcol(r,"الاستخدام") + '</td>'
                 + '</tr>'
             )
         th = "padding:10px 14px;white-space:nowrap;border:none;"
