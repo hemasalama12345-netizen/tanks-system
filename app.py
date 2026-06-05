@@ -303,18 +303,12 @@ def make_tank_label_html(sn, order_id, customer_name, tank_use,
     _use_map = {'ماء':'Water','صرف':'Sewage','ديزل':'Diesel','حريق':'Fire'}
     _use_en = _use_map.get(str(tank_use), str(tank_use))
 
+    # نص QR مختصر — يضمن قراءة سليمة على أي جهاز
     qr_text = (
-        f"SN: {_safe(sn)} | ORDER: {_safe(order_id)}\n"
-        f"=== بطاقة خزان فايبرجلاس ===\n"
-        f"الرقم المسلسل: {_safe(sn)}\n"
-        f"رقم الطلبية: {_safe(order_id)}\n"
-        f"العميل: {_safe(customer_name)}\n"
-        f"السعة: {_safe(tank_capacity)}\n"
-        f"الاستخدام: {_use_en}\n"
-        f"نوع التركيب: {_safe(tank_type)}\n"
-        f"تاريخ التسليم: {_safe(delivery_date)}\n"
-        f"التسلسل: {seq} من {total}\n"
-        f"المصنع: {_safe(factory_name)}"
+        f"SN:{_safe(sn)} ORD:{_safe(order_id)} "
+        f"CAP:{_safe(tank_capacity)} USE:{_use_en} "
+        f"TYPE:{_safe(tank_type)} DATE:{_safe(delivery_date)} "
+        f"SEQ:{seq}/{total}"
     )
     qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=10)
     return f"""<!DOCTYPE html>
@@ -3539,7 +3533,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                 f"CAPACITY:{tc}|USE:{tu}|TYPE:{tt}|"
                 f"DATE:{today_str}|SEQ:{i+1}/{len(serials_list)}"
             )
-            qr_b64 = _make_qr_b64_old(qr_text, color=(30,58,138), module_size=8)
+            qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=8)
             cards_data.append({
                 "sn": sn,
                 "qr_b64": qr_b64,
@@ -3648,10 +3642,10 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
   padding:18px 16px;
   display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:8px;
-  width:160px;flex-shrink:0;
+  width:190px;flex-shrink:0;
 }}
 .qr-img{{
-  width:120px;height:120px;
+  width:150px;height:150px;
   border:3px solid #1E3A8A;border-radius:8px;
   display:block;
 }}
