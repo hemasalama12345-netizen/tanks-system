@@ -304,17 +304,14 @@ def make_tank_label_html(sn, order_id, customer_name, tank_use,
     _use_en = _use_map.get(str(tank_use), str(tank_use))
 
     qr_text = (
-        f"SN: {_safe(sn)} | ORDER: {_safe(order_id)}\n"
-        f"=== بطاقة خزان فايبرجلاس ===\n"
-        f"الرقم المسلسل: {_safe(sn)}\n"
-        f"رقم الطلبية: {_safe(order_id)}\n"
-        f"العميل: {_safe(customer_name)}\n"
-        f"السعة: {_safe(tank_capacity)}\n"
-        f"الاستخدام: {_use_en}\n"
-        f"نوع التركيب: {_safe(tank_type)}\n"
-        f"تاريخ التسليم: {_safe(delivery_date)}\n"
-        f"التسلسل: {seq} من {total}\n"
-        f"المصنع: {_safe(factory_name)}"
+        f"SN:{_safe(sn)}"
+        f" ORD:{_safe(order_id)}"
+        f" CAP:{_safe(tank_capacity)}"
+        f" USE:{_use_en}"
+        f" DATE:{_safe(delivery_date)}"
+        f" SEQ:{seq}/{total}"
+        f" MFG:{_safe(factory_name)}"
+        f" CLIENT:{_safe(customer_name)}"
     )
     qr_b64 = make_qr_b64(qr_text, color=(30,58,138), module_size=10)
     return f"""<!DOCTYPE html>
@@ -1919,7 +1916,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                                 today_cr  = datetime.date.today().strftime("%Y/%m/%d")
                                 rcpt_no_c = f"CPR-{so}-{datetime.date.today().strftime('%Y%m%d')}-{pk+1}"
                                 _qr_cp_b64 = make_qr_b64(
-                                    f"=== إيصال دفعة عميل ===\nرقم الإيصال: {rcpt_no_c}\nالعميل: {sc}\nرقم الطلبية: {so}\nالمبلغ: {pa:.2f} ريال\nتاريخ الدفع: {today_cr}",
+                                    f"RCPT:{rcpt_no_c} CLIENT:{sc} ORD:{so} AMT:{pa:.2f} DATE:{today_cr}",
                                     color=(30,58,138), module_size=6)
                                 due_c_color = "#16a34a" if new_due_c <= 0.5 else "#dc2626"
                                 cust_rcpt = f"""<!DOCTYPE html>
@@ -2944,7 +2941,7 @@ elif menu == "📥 المشتريات والمخزن":
                                 today_r  = datetime.date.today().strftime("%Y/%m/%d")
                                 rcpt_no  = f"SPR-{pid}-{datetime.date.today().strftime('%Y%m%d')}"
                                 _qr_sp_b64 = make_qr_b64(
-                                    f"=== إيصال دفعة مورد ===\nرقم الإيصال: {rcpt_no}\nالمورد: {ss}\nرقم الفاتورة: {pid}\nالمبلغ: {sa:.2f} ريال\nتاريخ الدفع: {today_r}",
+                                    f"RCPT:{rcpt_no} SUP:{ss} INV:{pid} AMT:{sa:.2f} DATE:{today_r}",
                                     color=(30,58,138), module_size=6)
                                 due_color = "#16a34a" if new_due <= 0.5 else "#dc2626"
                                 due_label = f"{max(0,new_due):,.2f} ريال" + (" ✅ مسدد" if new_due<=0.5 else "")
@@ -3284,15 +3281,11 @@ elif menu == "💰 الشحن والفواتير":
             for i,sn in enumerate(serials_list))
         # QR data for delivery
         qr_do_data = (
-            f"=== أمر تسليم ===\n"
-            f"رقم التسليم: {did}\n"
-            f"رقم الطلبية: {oid}\n"
-            f"العميل: {customer_name}\n"
-            f"عدد الخزانات: {qty}\n"
-            f"النوع: {tu} — سعة {tc}\n"
-            f"تاريخ التسليم: {today_str}\n"
-            f"السائق: {driver_name}\n"
-            f"لوحة السيارة: {car_plate}"
+            f"DO:{did} ORD:{oid} QTY:{qty}"
+            f" USE:{tu} CAP:{tc}"
+            f" DATE:{today_str}"
+            f" DRIVER:{driver_name} PLATE:{car_plate}"
+            f" CLIENT:{customer_name}"
         )
         _qr_do_b64 = make_qr_b64(qr_do_data, color=(30,58,138), module_size=7)
         _tpl_do = f"""<!DOCTYPE html>
@@ -3394,17 +3387,11 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
             </tr>'''
             for i,sn in enumerate(serials_list))
         qr_inv_data = (
-            f"=== فاتورة مبيعات ===\n"
-            f"رقم الفاتورة: {inv_n}\n"
-            f"رقم التسليم: {did}\n"
-            f"رقم الطلبية: {oid}\n"
-            f"العميل: {customer_name}\n"
-            f"عدد الخزانات: {qty}\n"
-            f"النوع: {tu} — سعة {tc}\n"
-            f"الإجمالي: {grand:.2f} ريال\n"
-            f"المبلغ المطلوب: {net:.2f} ريال\n"
-            f"تاريخ الفاتورة: {today_str}\n"
-            f"الرقم الضريبي: {tax_number}"
+            f"INV:{inv_n} DO:{did} ORD:{oid}"
+            f" QTY:{qty} USE:{tu} CAP:{tc}"
+            f" TOTAL:{grand:.2f} NET:{net:.2f}"
+            f" DATE:{today_str} VAT:{tax_number}"
+            f" CLIENT:{customer_name}"
         )
         _qr_inv_b64  = make_qr_b64(qr_inv_data, color=(220,38,38), module_size=7)
         _tpl_inv = f"""<!DOCTYPE html>
@@ -3530,17 +3517,14 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         labels_data = []
         for i,sn in enumerate(serials_list):
             qr_text = (
-                f"SN: {sn} | ORDER: {order_id}\n"
-                f"=== بطاقة خزان فايبرجلاس ===\n"
-                f"الرقم المسلسل: {sn}\n"
-                f"رقم الطلبية: {order_id}\n"
-                f"العميل: {customer_name}\n"
-                f"السعة: {tc}\n"
-                f"الاستخدام: {tu}\n"
-                f"نوع التركيب: {tt}\n"
-                f"تاريخ الإنتاج: {today_str}\n"
-                f"التسلسل: {i+1} من {len(serials_list)}\n"
-                f"المصنع: {FACTORY_NAME}"
+                f"SN:{sn}"
+                f" ORD:{order_id}"
+                f" CAP:{tc}"
+                f" USE:{tu}"
+                f" DATE:{today_str}"
+                f" SEQ:{i+1}/{len(serials_list)}"
+                f" CLIENT:{customer_name}"
+                f" MFG:{FACTORY_NAME}"
             )
             labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
         # توليد QR لكل بطاقة
@@ -3968,7 +3952,7 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                         adv_order = float(order_info['advance_paid'].iloc[0]) if not order_info.empty else 0
                         remaining_after = contract_val - adv_order - total_paid_so_far
 
-                        qr_rcpt = f"=== إيصال دفعة عميل ===\nرقم الإيصال: {receipt_no}\nالعميل: {sc4}\nرقم الطلبية: {so4}\nالمبلغ: {pa4:.2f} ريال\nطريقة الدفع: {pt4}\nتاريخ الدفع: {today_r}"
+                        qr_rcpt = f"RCPT:{receipt_no} CLIENT:{sc4} ORD:{so4} AMT:{pa4:.2f} METHOD:{pt4} DATE:{today_r}"
                         _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=6)
 
                         receipt_html = f"""<!DOCTYPE html>
