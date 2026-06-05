@@ -3533,7 +3533,14 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         # توليد QR لكل بطاقة — نص إنجليزي ASCII فقط لضمان القراءة على أي جهاز
         cards_data = []
         for i, sn in enumerate(serials_list):
-            qr_text = f"https://tanks.app/verify?sn={sn}&cap={tc}&use={tu_en}&order={order_id}"
+            qr_text = (
+                f"Tank Serial: {sn}\n"
+                f"Capacity: {tc} Liters\n"
+                f"Use: {tu_en}\n"
+                f"Type: {tt_en}\n"
+                f"Order: {order_id}\n"
+                f"Date: {today_str}"
+            )
             qr_b64 = _make_qr_fallback(qr_text, color=(30,58,138), module_size=10)
             cards_data.append({
                 "sn": sn,
