@@ -3522,86 +3522,39 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 
     def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type,
                              order_id, customer_name, today_str):
+        """
+        بتولد HTML للبطاقات باستخدام qrcode.js في المتصفح مباشرة
+        بدون أي API call — نفس مبدأ الفاتورة وأمر التسليم بالظبط
+        """
         tc  = _sv(tank_capacity)
         tu  = _sv(tank_use)
         tt  = _sv(tank_type)
-        tank_desc_ar = f"خزان {tu} — سعة {tc} — {tt}"
-        tank_desc_en = f"Tank {tu} | Capacity: {tc} | {tt}"
-        labels_data = []
-        for i,sn in enumerate(serials_list):
-            qr_text = (
-                f"SN: {sn} | ORDER: {order_id}\n"
-                f"=== بطاقة خزان فايبرجلاس ===\n"
-                f"الرقم المسلسل: {sn}\n"
-                f"رقم الطلبية: {order_id}\n"
-                f"العميل: {customer_name}\n"
-                f"السعة: {tc}\n"
-                f"الاستخدام: {tu}\n"
-                f"نوع التركيب: {tt}\n"
-                f"تاريخ الإنتاج: {today_str}\n"
-                f"التسلسل: {i+1} من {len(serials_list)}\n"
-                f"المصنع: {FACTORY_NAME}"
-            )
-            labels_data.append({"id":f"qr_{i}","sn":sn,"qr_text":qr_text,"index":i+1})
-        # توليد QR لكل بطاقة
-        for item in labels_data:
-            item['qr_b64'] = make_qr_b64(item['qr_text'], color=(30,58,138), module_size=9)
 
-        # كل بطاقة في صفحة A4 مستقلة
-        label_pages = ""
-        for item in labels_data:
-            label_pages += f"""
-<div class="a4-page">
-  <div class="card">
-    <div class="card-header">
-      <div class="header-left">
-        <div class="factory-icon">🏭</div>
-        <div>
-          <div class="factory-name">{FACTORY_NAME}</div>
-          <div class="factory-sub">Fibreglass Tank Manufacturer</div>
-          <div class="factory-addr">{FACTORY_ADDRESS}</div>
-        </div>
-      </div>
-      <div class="header-right">
-        <div class="card-badge">بطاقة تعريف الخزان</div>
-        <div class="card-badge-en">Tank ID Card</div>
-      </div>
-    </div>
-    <div class="card-body">
-      <div class="qr-section">
-        <img src="data:image/png;base64,{item['qr_b64']}" class="qr-box" style="display:block;width:130px;height:130px;border:3px solid #1E3A8A;border-radius:8px;" alt="QR">
-        <div class="qr-caption">امسح للتحقق<br>Scan to Verify</div>
-        <div class="seq-badge">خزان {item['index']} من {len(serials_list)}<br>Tank {item['index']} of {len(serials_list)}</div>
-      </div>
-      <div class="info-section">
-        <div class="sn-display">{item['sn']}</div>
-        <div class="info-grid-card">
-          <div class="ig-item"><span class="ig-lbl">نوع الاستخدام</span><span class="ig-val">{tu}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Type of Use</span><span class="ig-val ltr">{tu}</span></div>
-          <div class="ig-item"><span class="ig-lbl">السعة</span><span class="ig-val">{tc}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Capacity</span><span class="ig-val ltr">{tc}</span></div>
-          <div class="ig-item"><span class="ig-lbl">نوع التركيب</span><span class="ig-val">{tt}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Installation</span><span class="ig-val ltr">{tt}</span></div>
-          <div class="ig-item"><span class="ig-lbl">رقم الطلبية</span><span class="ig-val">{order_id}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Order No.</span><span class="ig-val ltr">{order_id}</span></div>
-          <div class="ig-item"><span class="ig-lbl">العميل</span><span class="ig-val">{customer_name}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Customer</span><span class="ig-val ltr">{customer_name}</span></div>
-          <div class="ig-item"><span class="ig-lbl">تاريخ الإنتاج</span><span class="ig-val">{today_str}</span></div>
-          <div class="ig-item"><span class="ig-lbl">Production Date</span><span class="ig-val ltr">{today_str}</span></div>
-        </div>
-      </div>
-    </div>
-    <div class="card-footer">
-      <span>{FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-      <span>نظام ERP v7.0 | {today_str}</span>
-    </div>
-  </div>
-</div>"""
+        # بناء بيانات كل بطاقة كـ JSON تُمرر لـ JS
+        import json as _json
+        cards_data = []
+        for i, sn in enumerate(serials_list):
+            qr_text = (
+                f"SN:{sn}|ORDER:{order_id}|"
+                f"CUSTOMER:{customer_name}|"
+                f"CAPACITY:{tc}|USE:{tu}|TYPE:{tt}|"
+                f"DATE:{today_str}|SEQ:{i+1}/{len(serials_list)}|"
+                f"FACTORY:{FACTORY_NAME}"
+            )
+            cards_data.append({
+                "sn": sn,
+                "qr_text": qr_text,
+                "index": i + 1,
+                "total": len(serials_list)
+            })
+
+        cards_json = _json.dumps(cards_data, ensure_ascii=False)
 
         return f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 *{{box-sizing:border-box;margin:0;padding:0;}}
@@ -3610,13 +3563,9 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
   width:210mm;min-height:297mm;
   background:#fff;margin:0 auto 20px auto;
   display:flex;align-items:center;justify-content:center;
-  padding:20mm;
-  page-break-after:always;
+  padding:20mm;page-break-after:always;
 }}
-.card{{
-  width:100%;border:3px solid #1E3A8A;border-radius:16px;
-  overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.15);
-}}
+.card{{width:100%;border:3px solid #1E3A8A;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.15);}}
 .card-header{{
   background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
   color:#fff;padding:18px 22px;
@@ -3634,12 +3583,13 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 .qr-section{{
   background:#f8fafc;border-left:1px solid #e2e8f0;
   padding:24px 20px;display:flex;flex-direction:column;
-  align-items:center;gap:12px;min-width:160px;
+  align-items:center;gap:12px;min-width:170px;
 }}
 .qr-box{{
   width:130px;height:130px;
   border:3px solid #1E3A8A;border-radius:10px;
   overflow:hidden;background:#fff;
+  display:flex;align-items:center;justify-content:center;
 }}
 .qr-box canvas,.qr-box img{{width:130px!important;height:130px!important;display:block;}}
 .qr-caption{{font-size:11px;color:#64748b;text-align:center;line-height:1.6;}}
@@ -3660,7 +3610,7 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 .ig-item{{display:flex;flex-direction:column;background:#f8fafc;border-radius:6px;padding:8px 10px;}}
 .ig-lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}}
 .ig-val{{font-size:12px;font-weight:700;color:#1e293b;}}
-.ig-val.ltr{{direction:ltr;}}
+.ig-val.ltr{{direction:ltr;text-align:left;}}
 .card-footer{{
   background:#f1f5f9;border-top:1px solid #e2e8f0;
   padding:10px 22px;display:flex;
@@ -3668,17 +3618,89 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
 }}
 @media print{{
   body{{background:#fff;}}
-  .a4-page{{
-    width:210mm;min-height:297mm;margin:0;padding:15mm;
-    page-break-after:always;box-shadow:none;
-  }}
+  .a4-page{{width:210mm;min-height:297mm;margin:0;padding:15mm;page-break-after:always;box-shadow:none;}}
   .card{{box-shadow:none;}}
 }}
 </style>
 </head>
 <body>
-{label_pages}
+<div id="cards-container"></div>
+<script>
+var cardsData = {cards_json};
+var factoryName = {_json.dumps(FACTORY_NAME, ensure_ascii=False)};
+var factoryAddr = {_json.dumps(FACTORY_ADDRESS, ensure_ascii=False)};
+var tu = {_json.dumps(tu, ensure_ascii=False)};
+var tc = {_json.dumps(tc, ensure_ascii=False)};
+var tt = {_json.dumps(tt, ensure_ascii=False)};
+var orderId = {_json.dumps(str(order_id), ensure_ascii=False)};
+var customerName = {_json.dumps(customer_name, ensure_ascii=False)};
+var todayStr = {_json.dumps(today_str, ensure_ascii=False)};
 
+var container = document.getElementById('cards-container');
+
+cardsData.forEach(function(card, idx) {{
+  var pageDiv = document.createElement('div');
+  pageDiv.className = 'a4-page';
+
+  pageDiv.innerHTML =
+    '<div class="card">' +
+      '<div class="card-header">' +
+        '<div class="header-left">' +
+          '<div class="factory-icon">&#127981;</div>' +
+          '<div>' +
+            '<div class="factory-name">' + factoryName + '</div>' +
+            '<div class="factory-sub">Fibreglass Tank Manufacturer</div>' +
+            '<div class="factory-addr">' + factoryAddr + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="header-right">' +
+          '<div class="card-badge">&#1576;&#1591;&#1575;&#1602;&#1577; &#1578;&#1593;&#1585;&#1610;&#1601; &#1575;&#1604;&#1582;&#1586;&#1575;&#1606;</div>' +
+          '<div class="card-badge-en">Tank ID Card</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="qr-section">' +
+          '<div class="qr-box" id="qr-' + idx + '"></div>' +
+          '<div class="qr-caption">&#1575;&#1605;&#1587;&#1581; &#1604;&#1604;&#1578;&#1581;&#1602;&#1602;<br>Scan to Verify</div>' +
+          '<div class="seq-badge">&#1582;&#1586;&#1575;&#1606; ' + card.index + ' &#1605;&#1606; ' + card.total + '<br>Tank ' + card.index + ' of ' + card.total + '</div>' +
+        '</div>' +
+        '<div class="info-section">' +
+          '<div class="sn-display">' + card.sn + '</div>' +
+          '<div class="info-grid-card">' +
+            '<div class="ig-item"><span class="ig-lbl">&#1606;&#1608;&#1593; &#1575;&#1604;&#1575;&#1587;&#1578;&#1582;&#1583;&#1575;&#1605;</span><span class="ig-val">' + tu + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Type of Use</span><span class="ig-val ltr">' + tu + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">&#1575;&#1604;&#1587;&#1593;&#1577;</span><span class="ig-val">' + tc + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Capacity</span><span class="ig-val ltr">' + tc + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">&#1606;&#1608;&#1593; &#1575;&#1604;&#1578;&#1585;&#1603;&#1610;&#1576;</span><span class="ig-val">' + tt + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Installation</span><span class="ig-val ltr">' + tt + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">&#1585;&#1602;&#1605; &#1575;&#1604;&#1591;&#1604;&#1576;&#1610;&#1577;</span><span class="ig-val">' + orderId + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Order No.</span><span class="ig-val ltr">' + orderId + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">&#1575;&#1604;&#1593;&#1605;&#1610;&#1604;</span><span class="ig-val">' + customerName + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Customer</span><span class="ig-val ltr">' + customerName + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">&#1578;&#1575;&#1585;&#1610;&#1582; &#1575;&#1604;&#1573;&#1606;&#1578;&#1575;&#1580;</span><span class="ig-val">' + todayStr + '</span></div>' +
+            '<div class="ig-item"><span class="ig-lbl">Production Date</span><span class="ig-val ltr">' + todayStr + '</span></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card-footer">' +
+        '<span>' + factoryName + ' &#8212; ' + factoryAddr + '</span>' +
+        '<span>&#1606;&#1592;&#1575;&#1605; ERP v7.0 | ' + todayStr + '</span>' +
+      '</div>' +
+    '</div>';
+
+  container.appendChild(pageDiv);
+
+  // توليد QR Code بـ qrcode.js — يعمل على المتصفح مباشرة بدون API
+  new QRCode(document.getElementById('qr-' + idx), {{
+    text: card.qr_text,
+    width: 130,
+    height: 130,
+    colorDark: '#1E3A8A',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  }});
+}});
+</script>
 </body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
