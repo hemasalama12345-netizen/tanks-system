@@ -304,6 +304,7 @@ def make_tank_label_html(sn, order_id, customer_name, tank_use,
     _use_en = _use_map.get(str(tank_use), str(tank_use))
 
     qr_text = (
+        f"SN: {_safe(sn)} | ORDER: {_safe(order_id)}\n"
         f"=== بطاقة خزان فايبرجلاس ===\n"
         f"الرقم المسلسل: {_safe(sn)}\n"
         f"رقم الطلبية: {_safe(order_id)}\n"
@@ -3258,7 +3259,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 # ==========================================
 elif menu == "💰 الشحن والفواتير":
     st.subheader("💰 الشحن والفواتير")
-    tabs = st.tabs(["🚚 أمر تسليم","📄 فاتورة ضريبية","🏦 سند قبض","🔍 استعلام فواتير"])
+    tabs = st.tabs(["🚚 أمر تسليم","📄 فاتورة ضريبية","🏦 سند قبض","🔍 استعلام فواتير","🏷️ بطاقات QR"])
 
     # ---- دوال HTML للشحن ----
     def _sv(v):
@@ -3529,6 +3530,7 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         labels_data = []
         for i,sn in enumerate(serials_list):
             qr_text = (
+                f"SN: {sn} | ORDER: {order_id}\n"
                 f"=== بطاقة خزان فايبرجلاس ===\n"
                 f"الرقم المسلسل: {sn}\n"
                 f"رقم الطلبية: {order_id}\n"
@@ -3784,11 +3786,11 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                             st.session_state['last_inv_n']       = inv_n_auto
                             st.session_state['last_do_ready']    = True
 
-                # عرض أزرار التنزيل دائماً طالما في session_state — لا تختفي
+                # عرض أزرار التنزيل دائماً طالما في session_state — لا تختفي إلا بعد إنهاء المهمة
                 if st.session_state.get('last_do_ready'):
                     did_show  = st.session_state['last_did']
                     inv_show  = st.session_state['last_inv_n']
-                    st.success(f"✅ تم إصدار أمر التسليم #{did_show} والفاتورة {inv_show} — نزّل الملفات قبل المتابعة")
+                    st.success(f"✅ تم إصدار أمر التسليم #{did_show} والفاتورة {inv_show} — نزّل الملفات ثم اضغط «إنهاء المهمة»")
                     col1,col2,col3 = st.columns(3)
                     col1.download_button("🖨️ أمر التسليم (HTML)",
                         st.session_state['last_do_html'].encode('utf-8'),
@@ -3800,8 +3802,14 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                         st.session_state['last_qr_html'].encode('utf-8'),
                         f"QR_{did_show}.html", "text/html; charset=utf-8", key="dl_qr_persist")
                     st.caption("💡 افتح كل ملف في Chrome أو Safari ثم Ctrl+P للطباعة أو حفظ PDF")
-                    if st.button("🆕 أمر تسليم جديد", key="clear_do"):
+                    st.divider()
+                    if st.button("✅ إنهاء المهمة وتصفير الحقول", type="primary", key="clear_do"):
                         st.session_state['last_do_ready'] = False
+                        st.session_state['last_do_html']  = None
+                        st.session_state['last_inv_html'] = None
+                        st.session_state['last_qr_html']  = None
+                        st.session_state['last_did']      = None
+                        st.session_state['last_inv_n']    = None
                         st.session_state.dok += 1
                         st.rerun()
 
@@ -3869,7 +3877,26 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                 int(dr['shipped_qty']), float(dr['unit_price']), sn_list_inv,
                 sub, vat, grand, adv_d, net, today_str_inv)
 
-            col_b1, col_b2 = st.columns(2)
+            # توليد بطاقات QR للخزانات الخاصة بهذا الأمر
+            _labels_pages2 = []
+            for _li2, _sn2 in enumerate(sn_list_inv):
+                _lbl2 = make_tank_label_html(
+                    sn=_sn2,
+                    order_id=str(dr['order_id']),
+                    customer_name=str(dr['trade_name']),
+                    tank_use=str(dr['tank_use']),
+                    tank_capacity=str(dr['tank_capacity'] or '—'),
+                    tank_type=str(dr['tank_type']),
+                    delivery_date=today_str_inv,
+                    factory_name=FACTORY_NAME,
+                    factory_address=FACTORY_ADDRESS,
+                    seq=_li2+1, total=len(sn_list_inv))
+                _labels_pages2.append(_lbl2)
+            qr_html2 = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
+<body>{"".join(f'<div class="pg">{p}</div>' for p in _labels_pages2)}</body></html>""" if _labels_pages2 else None
+
+            col_b1, col_b2, col_b3 = st.columns(3)
             # مفتاح فريد لكل أمر تسليم — يضمن طباعة الفاتورة الصحيحة
             col_b1.download_button(
                 f"🖨️ طباعة فاتورة أمر #{did2} (HTML)",
@@ -3877,15 +3904,25 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                 f"INV_{inv_n}.html",
                 "text/html; charset=utf-8",
                 key=f"dl_inv_do_{did2}")
+            if qr_html2:
+                col_b2.download_button(
+                    f"🏷️ بطاقات QR الخزانات ({len(sn_list_inv)} بطاقة)",
+                    qr_html2.encode('utf-8'),
+                    f"QR_DO_{did2}.html",
+                    "text/html; charset=utf-8",
+                    key=f"dl_qr_inv_{did2}")
+            else:
+                col_b2.info("لا توجد أرقام تسلسلية")
             if saved_inv.empty:
-                if col_b2.button("💾 حفظ الفاتورة", key=f"save_inv_do_{did2}"):
+                if col_b3.button("💾 حفظ الفاتورة", key=f"save_inv_do_{did2}"):
                     run_write(
                         "INSERT INTO sales_invoices(delivery_id,order_id,subtotal,vat,grand_total,advance_deducted,net_required) VALUES(:did,:oid,:st,:v,:gt,:ad,:nr)",
                         {"did":did2,"oid":dr['order_id'],"st":sub,"v":vat,"gt":grand,"ad":adv_d,"nr":net})
                     st.success(f"✅ تم حفظ فاتورة أمر التسليم #{did2}!")
                     st.rerun()
             else:
-                col_b2.success("✅ محفوظة في قاعدة البيانات")
+                col_b3.success("✅ محفوظة في قاعدة البيانات")
+            st.caption("💡 افتح الملفات في Chrome أو Safari ثم Ctrl+P للطباعة")
 
     # ===== تبويب 3: سند قبض =====
     with tabs[2]:
@@ -4147,6 +4184,141 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-ali
                         f"invoices_report_{datetime.date.today()}.html",
                         "text/html; charset=utf-8", key="dl_inv_report")
                     st.caption("💡 افتح ملف HTML في Chrome أو Safari ثم Ctrl+P للطباعة")
+
+    # ===== تبويب 5: بطاقات QR =====
+    with tabs[4]:
+        st.markdown("#### 🏷️ استرجاع بطاقات QR الخزانات")
+        st.info("اختر تاريخ التسليم لاسترجاع بطاقات QR الخزانات التي تم إصدارها في ذلك اليوم وإعادة طباعتها.")
+
+        qr_col1, qr_col2 = st.columns(2)
+        qr_date = qr_col1.date_input("📅 تاريخ التسليم:", datetime.date.today(), key="qr_date_sel")
+        qr_cust_df = run_query("SELECT id,trade_name FROM customers ORDER BY trade_name")
+        qr_cust_opts = ["الكل"] + (qr_cust_df['trade_name'].tolist() if not qr_cust_df.empty else [])
+        qr_cust = qr_col2.selectbox("العميل:", qr_cust_opts, key="qr_cust_sel")
+
+        if st.button("🔍 بحث عن البطاقات", type="primary", key="qr_search_btn"):
+            # جلب أوامر التسليم في التاريخ المحدد
+            qr_date_str = qr_date.strftime("%Y-%m-%d")
+            if qr_cust == "الكل":
+                qr_do_df = run_query("""
+                    SELECT d.delivery_id, d.order_id, d.shipped_qty, d.delivery_date,
+                           d.driver_name, d.car_plate,
+                           o.tank_use, o.tank_capacity, o.tank_type,
+                           c.trade_name
+                    FROM delivery_orders d
+                    JOIN orders o ON d.order_id=o.order_id
+                    JOIN customers c ON o.customer_id=c.id
+                    WHERE DATE(d.delivery_date)=:dt
+                    ORDER BY d.delivery_id""", {"dt": qr_date_str})
+            else:
+                qr_cid = int(qr_cust_df[qr_cust_df['trade_name']==qr_cust]['id'].iloc[0])
+                qr_do_df = run_query("""
+                    SELECT d.delivery_id, d.order_id, d.shipped_qty, d.delivery_date,
+                           d.driver_name, d.car_plate,
+                           o.tank_use, o.tank_capacity, o.tank_type,
+                           c.trade_name
+                    FROM delivery_orders d
+                    JOIN orders o ON d.order_id=o.order_id
+                    JOIN customers c ON o.customer_id=c.id
+                    WHERE DATE(d.delivery_date)=:dt AND o.customer_id=:cid
+                    ORDER BY d.delivery_id""", {"dt": qr_date_str, "cid": qr_cid})
+
+            if qr_do_df.empty:
+                st.warning(f"⚠️ لا توجد أوامر تسليم في تاريخ {qr_date.strftime('%Y/%m/%d')}")
+            else:
+                st.success(f"✅ تم العثور على {len(qr_do_df)} أمر تسليم — إجمالي {int(qr_do_df['shipped_qty'].sum())} خزان")
+                st.dataframe(qr_do_df[['delivery_id','order_id','trade_name','shipped_qty','tank_use','tank_capacity','delivery_date']],
+                             use_container_width=True, hide_index=True)
+
+                # توليد بطاقات QR لكل أمر تسليم
+                all_label_pages = []
+                for _, qr_row in qr_do_df.iterrows():
+                    qr_did   = int(qr_row['delivery_id'])
+                    qr_oid   = str(qr_row['order_id'])
+                    qr_qty   = int(qr_row['shipped_qty'])
+                    qr_dname = str(qr_row['trade_name'])
+                    qr_use   = str(qr_row['tank_use'])
+                    qr_cap   = str(qr_row['tank_capacity'] or '—')
+                    qr_typ   = str(qr_row['tank_type'])
+                    qr_del_d = str(qr_row['delivery_date'])[:10] if qr_row['delivery_date'] else qr_date.strftime("%Y/%m/%d")
+
+                    # جلب الأرقام التسلسلية
+                    _prev_off_qr = int(run_query(
+                        "SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",
+                        {"oid":qr_oid,"did":qr_did})['t'].iloc[0])
+                    qr_sn_df = run_query(
+                        "SELECT serial_number FROM production_tanks WHERE order_id=:oid ORDER BY serial_number LIMIT :lim OFFSET :off",
+                        {"oid":qr_oid,"lim":qr_qty,"off":max(0,_prev_off_qr)})
+                    qr_sn_list = qr_sn_df['serial_number'].tolist() if not qr_sn_df.empty else [f"SUBUL-SN-{qr_did}-{i}" for i in range(1,qr_qty+1)]
+
+                    for _li, _sn in enumerate(qr_sn_list):
+                        _lbl = make_tank_label_html(
+                            sn=_sn,
+                            order_id=qr_oid,
+                            customer_name=qr_dname,
+                            tank_use=qr_use,
+                            tank_capacity=qr_cap,
+                            tank_type=qr_typ,
+                            delivery_date=qr_del_d,
+                            factory_name=FACTORY_NAME,
+                            factory_address=FACTORY_ADDRESS,
+                            seq=_li+1, total=len(qr_sn_list))
+                        all_label_pages.append(_lbl)
+
+                if all_label_pages:
+                    qr_reprint_html = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
+<body>{"".join(f'<div class="pg">{p}</div>' for p in all_label_pages)}</body></html>"""
+                    total_cards = len(all_label_pages)
+                    st.download_button(
+                        f"🏷️ طباعة كل البطاقات ({total_cards} بطاقة) — {qr_date.strftime('%Y/%m/%d')}",
+                        qr_reprint_html.encode('utf-8'),
+                        f"QR_Cards_{qr_date.strftime('%Y%m%d')}.html",
+                        "text/html; charset=utf-8",
+                        key="dl_qr_reprint",
+                        type="primary")
+                    st.caption("💡 افتح الملف في Chrome أو Safari ثم Ctrl+P لطباعة كل البطاقات")
+
+                    # عرض ملخص لكل أمر تسليم مع زر منفصل
+                    st.divider()
+                    st.markdown("##### أو طباعة بطاقات كل أمر تسليم بشكل منفصل:")
+                    for _, qr_row2 in qr_do_df.iterrows():
+                        qr_did2  = int(qr_row2['delivery_id'])
+                        qr_oid2  = str(qr_row2['order_id'])
+                        qr_qty2  = int(qr_row2['shipped_qty'])
+                        qr_dname2= str(qr_row2['trade_name'])
+                        qr_use2  = str(qr_row2['tank_use'])
+                        qr_cap2  = str(qr_row2['tank_capacity'] or '—')
+                        qr_typ2  = str(qr_row2['tank_type'])
+                        qr_del_d2= str(qr_row2['delivery_date'])[:10] if qr_row2['delivery_date'] else qr_date.strftime("%Y/%m/%d")
+
+                        _prev2 = int(run_query(
+                            "SELECT COALESCE(SUM(d2.shipped_qty),0) as t FROM delivery_orders d2 WHERE d2.order_id=:oid AND d2.delivery_id<:did",
+                            {"oid":qr_oid2,"did":qr_did2})['t'].iloc[0])
+                        sn_df2 = run_query(
+                            "SELECT serial_number FROM production_tanks WHERE order_id=:oid ORDER BY serial_number LIMIT :lim OFFSET :off",
+                            {"oid":qr_oid2,"lim":qr_qty2,"off":max(0,_prev2)})
+                        sn_list2 = sn_df2['serial_number'].tolist() if not sn_df2.empty else [f"SUBUL-SN-{qr_did2}-{i}" for i in range(1,qr_qty2+1)]
+
+                        pages2 = []
+                        for _li2, _sn2 in enumerate(sn_list2):
+                            pages2.append(make_tank_label_html(
+                                sn=_sn2, order_id=qr_oid2, customer_name=qr_dname2,
+                                tank_use=qr_use2, tank_capacity=qr_cap2, tank_type=qr_typ2,
+                                delivery_date=qr_del_d2, factory_name=FACTORY_NAME,
+                                factory_address=FACTORY_ADDRESS, seq=_li2+1, total=len(sn_list2)))
+                        single_qr_html = f"""<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+<style>@media print{{@page{{size:A4;margin:0;}}div.pg{{page-break-after:always;}}}}</style></head>
+<body>{"".join(f'<div class="pg">{p}</div>' for p in pages2)}</body></html>"""
+
+                        st.download_button(
+                            f"🏷️ أمر #{qr_did2} | {qr_dname2} | {qr_qty2} خزان ({qr_use2} {qr_cap2})",
+                            single_qr_html.encode('utf-8'),
+                            f"QR_DO_{qr_did2}.html",
+                            "text/html; charset=utf-8",
+                            key=f"dl_qr_single_{qr_did2}")
+                else:
+                    st.warning("لا توجد أرقام تسلسلية مسجلة لهذه الأوامر.")
 
 # ==========================================
 # [6] العمال والأجور
