@@ -1190,16 +1190,20 @@ if menu == "📊 لوحة التحكم":
         """)
     except Exception: pass
 
-    adf = run_query("""SELECT o.order_id as الطلبية, c.trade_name as العميل,
-        o.qty as الكمية, o.total_price as القيمة, o.status as الحالة,
-        o.tank_use as الاستخدام,
-        COALESCE(o.tank_capacity,'—') as السعة
-        FROM orders o JOIN customers c ON o.customer_id=c.id
+    adf = run_query("""SELECT o.order_id as الطلبية,
+        COALESCE(c.trade_name, c.name, '—') as العميل,
+        COALESCE(o.qty, 0) as الكمية,
+        COALESCE(o.total_price, 0) as القيمة,
+        o.status as الحالة,
+        COALESCE(o.tank_use, '—') as الاستخدام,
+        COALESCE(o.tank_capacity, '—') as السعة
+        FROM orders o LEFT JOIN customers c ON o.customer_id=c.id
         WHERE o.status='قيد التنفيذ'
         ORDER BY o.order_date DESC""")
     if not adf.empty:
         # debug مؤقت — اعرض أسماء الأعمدة الفعلية
         st.caption("أعمدة الجدول: " + ", ".join(adf.columns.tolist()))
+        st.caption("صف أول: " + str(adf.iloc[0].to_dict()) if len(adf) > 0 else "")
         # بناء صفوف الجدول
         rows_html = ""
         # نضمن ترتيب الأعمدة صح بغض النظر عن أسماءها
