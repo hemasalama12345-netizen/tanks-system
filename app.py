@@ -1191,7 +1191,7 @@ if menu == "📊 لوحة التحكم":
     except Exception: pass
 
     adf = run_query("""SELECT o.order_id as الطلبية,
-        COALESCE(c.trade_name, c.name, '—') as العميل,
+        COALESCE(c.trade_name, '—') as العميل,
         COALESCE(o.qty, 0) as الكمية,
         COALESCE(o.total_price, 0) as القيمة,
         o.status as الحالة,
