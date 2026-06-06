@@ -206,9 +206,9 @@ except Exception as e:
 
 @st.cache_data(ttl=30)
 def run_query(query, params=None):
-    """cache 30 ثانية — يقلل الضغط على DB بشكل كبير"""
+    """cache 5 دقائق — يقلل الضغط على DB بشكل كبير"""
     try:
-        return conn.query(query, params=params, ttl=30)
+        return conn.query(query, params=params, ttl=300)
     except Exception as e:
         st.error(f"خطأ: {e}")
         return pd.DataFrame()
@@ -4883,19 +4883,22 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                           <td class="center">{total}</td>
                           <td class="center"><span class="pct">{pct}%</span></td>
                         </tr>"""
-                    # ── بناء تفاصيل الغياب لكل عامل ──
+                    # ── جلب كل تفاصيل الغياب في query واحدة ──
+                    all_absences = run_query("""
+                        SELECT w.name, a.att_date,
+                               COALESCE(NULLIF(a.excuse_type,''),'بدون عذر') as excuse_type
+                        FROM worker_attendance a
+                        JOIN workers w ON w.id=a.worker_id
+                        WHERE a.status='غائب'
+                        AND a.att_date BETWEEN :s AND :e
+                        ORDER BY w.name, a.att_date""",
+                        {"s": str(att_from), "e": str(att_to)})
+
                     detail_sections = ""
                     for _, r in att_rep.iterrows():
                         total_abs = int(r.get('غياب_بدون_عذر',0)) + int(r.get('غياب_بعذر',0))
                         if total_abs > 0:
-                            absences = run_query("""
-                                SELECT a.att_date, COALESCE(NULLIF(a.excuse_type,''),'بدون عذر') as excuse_type
-                                FROM worker_attendance a
-                                JOIN workers w ON w.id=a.worker_id
-                                WHERE w.name=:n AND a.status='غائب'
-                                AND a.att_date BETWEEN :s AND :e
-                                ORDER BY a.att_date""",
-                                {"n": r['name'], "s": str(att_from), "e": str(att_to)})
+                            absences = all_absences[all_absences['name'] == r['name']] if not all_absences.empty else pd.DataFrame()
                             if not absences.empty:
                                 abs_rows = ""
                                 for idx2, (_, ab) in enumerate(absences.iterrows()):
