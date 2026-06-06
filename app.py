@@ -1006,7 +1006,13 @@ menu = st.sidebar.radio("انتقل إلى:", [
 # ==========================================
 # [1] لوحة التحكم
 # ==========================================
-if menu == "📊 لوحة التحكم":
+
+# ==========================================
+# الأقسام كـ @st.fragment — عزل كامل لكل قسم
+# ==========================================
+
+@st.fragment
+def page_dashboard():
     # ============ رفع لوجو المصنع ============
     with st.expander("🖼️ إعدادات لوجو المصنع", expanded=False):
         if 'factory_logo_b64' not in st.session_state:
@@ -1269,10 +1275,13 @@ if menu == "📊 لوحة التحكم":
     else:
         st.info("لا توجد طلبيات نشطة حالياً")
 
-# ==========================================
-# [2] الطلبيات
-# ==========================================
-elif menu == "📦 الطلبيات":
+    # ==========================================
+    # [2] الطلبيات
+    # ==========================================
+
+
+@st.fragment
+def page_orders():
     st.subheader("📦 منظومة الطلبيات")
     tabs = st.tabs(["➕ طلبية جديدة","✏️ تعديل طلبية","📋 الطلبيات الجارية","💵 دفعات عميل","🔍 كشف حساب عميل"])
 
@@ -1386,29 +1395,29 @@ elif menu == "📦 الطلبيات":
                                 today_po = datetime.date.today().strftime("%Y/%m/%d")
                                 po_html_rows = "".join(f'<tr><td style="padding:8px 10px;border:1px solid #e2e8f0;">{m}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">{q:,.3f}</td><td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">كجم/م²</td></tr>' for m,q in shortages.items())
                                 po_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
-.info-box{{background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #d97706;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-  <div style="text-align:left;"><div class="badge">أمر شراء مواد خام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po}</p></div>
-</div>
-<div class="info-box">
-  <p><b>المورد:</b> {po_sup}</p>
-  <p><b>سبب الأمر:</b> عجز مواد خام لطلبية جديدة</p>
-  <p><b>التاريخ:</b> {today_po}</p>
-</div>
-<table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{po_html_rows}</tbody></table>
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po}</span></div>
-</body></html>"""
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+    .info-box{{background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #d97706;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+      <div style="text-align:left;"><div class="badge">أمر شراء مواد خام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po}</p></div>
+    </div>
+    <div class="info-box">
+      <p><b>المورد:</b> {po_sup}</p>
+      <p><b>سبب الأمر:</b> عجز مواد خام لطلبية جديدة</p>
+      <p><b>التاريخ:</b> {today_po}</p>
+    </div>
+    <table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{po_html_rows}</tbody></table>
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po}</span></div>
+    </body></html>"""
                                 st.session_state[f'po_html_{ok}'] = po_html
                                 st.success(f"✅ تم إصدار أمر الشراء للمورد: {po_sup}")
                             if st.session_state.get(f'po_html_{ok}'):
@@ -1505,46 +1514,46 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
                             for m,q in _edit_shortages.items())
                         _today_ep = datetime.date.today().strftime("%Y/%m/%d")
                         _edit_po_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #d97706;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;}}
-.info-box{{background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #d97706;}}
-.info-box p{{font-size:12px;margin:3px 0;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:36px;}}
-.sig-box{{text-align:center;width:150px;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
-.sig-lbl{{font-size:11px;color:#64748b;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">أمر توريد مواد خام</div><p style="color:#64748b;font-size:11px;margin-top:8px;">التاريخ: {_today_ep}</p></div>
-</div>
-<div class="info-box">
-  <p><b>المورد:</b> {_edit_sup}</p>
-  <p><b>الطلبية:</b> {sel_e}</p>
-  <p><b>سبب الأمر:</b> زيادة عدد الخزانات من {int(rr['qty'])} إلى {new_qty} خزان</p>
-  <p><b>التاريخ:</b> {_today_ep}</p>
-</div>
-<table>
-  <thead><tr><th>المادة الخام</th><th>الكمية الناقصة</th><th>الوحدة</th></tr></thead>
-  <tbody>{_ep_rows}</tbody>
-</table>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">أمين المخزن</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">مدير المشتريات</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">المدير العام</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {_today_ep}</span></div>
-</body></html>"""
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #d97706;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;}}
+    .info-box{{background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #d97706;}}
+    .info-box p{{font-size:12px;margin:3px 0;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:36px;}}
+    .sig-box{{text-align:center;width:150px;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
+    .sig-lbl{{font-size:11px;color:#64748b;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
+      <div style="text-align:left;"><div class="badge">أمر توريد مواد خام</div><p style="color:#64748b;font-size:11px;margin-top:8px;">التاريخ: {_today_ep}</p></div>
+    </div>
+    <div class="info-box">
+      <p><b>المورد:</b> {_edit_sup}</p>
+      <p><b>الطلبية:</b> {sel_e}</p>
+      <p><b>سبب الأمر:</b> زيادة عدد الخزانات من {int(rr['qty'])} إلى {new_qty} خزان</p>
+      <p><b>التاريخ:</b> {_today_ep}</p>
+    </div>
+    <table>
+      <thead><tr><th>المادة الخام</th><th>الكمية الناقصة</th><th>الوحدة</th></tr></thead>
+      <tbody>{_ep_rows}</tbody>
+    </table>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">أمين المخزن</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">مدير المشتريات</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">المدير العام</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {_today_ep}</span></div>
+    </body></html>"""
                         st.download_button(
                             "🖨️ تنزيل أمر توريد المواد الناقصة (HTML)",
                             _edit_po_html.encode('utf-8'),
@@ -1656,8 +1665,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 
                     # شريط تقدم التصنيع
                     st.markdown(f"""<div style="background:#e2e8f0;border-radius:8px;height:16px;overflow:hidden;margin:4px 0 2px 0">
-<div style="background:{'#16a34a' if pct_prod==100 else '#d97706' if pct_prod>=50 else '#dc2626'};width:{min(100,pct_prod)}%;height:100%;border-radius:8px;"></div></div>
-<small style="color:#64748b">🏭 التصنيع: {pct_prod}%</small>""", unsafe_allow_html=True)
+    <div style="background:{'#16a34a' if pct_prod==100 else '#d97706' if pct_prod>=50 else '#dc2626'};width:{min(100,pct_prod)}%;height:100%;border-radius:8px;"></div></div>
+    <small style="color:#64748b">🏭 التصنيع: {pct_prod}%</small>""", unsafe_allow_html=True)
 
                     # آخر الورديات
                     shifts = run_query("""SELECT date,planned_qty,actual_qty,status
@@ -1677,8 +1686,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                     d4.metric("نسبة إنجاز التسليم", f"{pct_del}%")
 
                     st.markdown(f"""<div style="background:#e2e8f0;border-radius:8px;height:16px;overflow:hidden;margin:4px 0 2px 0">
-<div style="background:{'#16a34a' if pct_del==100 else '#2563eb' if pct_del>=50 else '#94a3b8'};width:{min(100,pct_del)}%;height:100%;border-radius:8px;"></div></div>
-<small style="color:#64748b">🚚 التسليم: {pct_del}%</small>""", unsafe_allow_html=True)
+    <div style="background:{'#16a34a' if pct_del==100 else '#2563eb' if pct_del>=50 else '#94a3b8'};width:{min(100,pct_del)}%;height:100%;border-radius:8px;"></div></div>
+    <small style="color:#64748b">🚚 التسليم: {pct_del}%</small>""", unsafe_allow_html=True)
 
                     # سجل التسليمات
                     deliveries = run_query("""SELECT delivery_date,shipped_qty,driver_name,car_plate
@@ -1961,15 +1970,15 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
 
                 # إضافة charset للـ HTML عشان العربي يظهر صح
                 full_html_with_charset = """<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-""" + full_html + """
-</body>
-</html>"""
+    <html dir="rtl" lang="ar">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body>
+    """ + full_html + """
+    </body>
+    </html>"""
 
                 st.download_button(
                     label="🖨️ تنزيل التقرير للطباعة (HTML)",
@@ -2045,63 +2054,63 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                                     color=(30,58,138), module_size=6)
                                 due_c_color = "#16a34a" if new_due_c <= 0.5 else "#dc2626"
                                 cust_rcpt = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:750px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;margin-bottom:3px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}}
-.badge{{background:#16a34a;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-.badge-en{{background:#f0fdf4;color:#16a34a;padding:3px 12px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
-.qr-img{{width:70px;height:70px;border:2px solid #16a34a;border-radius:6px;}}
-.amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}}
-.amt-box .lbl{{font-size:13px;opacity:.85;}} .amt-box .lbl-en{{font-size:10px;opacity:.6;direction:ltr;}} .amt-box .val{{font-size:26px;font-weight:800;}}
-.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
-.ig{{background:#f8fafc;border-radius:8px;padding:10px;border-right:3px solid #16a34a;}}
-.ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:3px;}} .ig .val{{font-size:12px;font-weight:700;}}
-.bal{{background:#f1f5f9;border-radius:10px;padding:12px 16px;margin-bottom:14px;}}
-.bal h4{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}}
-.brow{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;}}
-.brow.total{{font-weight:700;font-size:13px;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:6px;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:14px;}}
-.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
-.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:10px;color:#64748b;}}
-.footer{{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p><p style="margin-top:5px;">رقم الإيصال: <b>{rcpt_no_c}</b> | {today_cr}</p></div>
-  <div class="hdr-right"><div class="badge">إيصال دفعة عميل</div><div class="badge-en">Customer Payment Receipt</div><img class="qr-img" src="data:image/png;base64,{_qr_cp_b64}" alt="QR"></div>
-</div>
-<div class="amt-box">
-  <div><div class="lbl">المبلغ المستلم</div><div class="lbl-en">Amount Received</div></div>
-  <div class="val">{pa:,.2f} ريال</div>
-</div>
-<div class="grid2">
-  <div class="ig"><div class="lbl">العميل / Customer</div><div class="val">{sc}</div></div>
-  <div class="ig"><div class="lbl">رقم الطلبية / Order No.</div><div class="val">{so}</div></div>
-  <div class="ig"><div class="lbl">طريقة الدفع / Method</div><div class="val">{pt}</div></div>
-  <div class="ig"><div class="lbl">البنك / Bank</div><div class="val">{pb or "—"}</div></div>
-  <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_cr}</div></div>
-  <div class="ig"><div class="lbl">رقم الإيصال</div><div class="val">{rcpt_no_c}</div></div>
-</div>
-<div class="bal">
-  <h4>📊 ملخص حساب الطلبية</h4>
-  <div class="brow"><span>إجمالي الطلبية (مع الضريبة)</span><span>{ord_grand:,.2f} ر</span></div>
-  <div class="brow"><span>الدفعة المقدمة</span><span>{ord_adv:,.2f} ر</span></div>
-  <div class="brow"><span>المدفوع سابقاً</span><span>{ord_paid:,.2f} ر</span></div>
-  <div class="brow"><span>هذه الدفعة</span><span style="color:#16a34a;font-weight:700;">{pa:,.2f} ر</span></div>
-  <div class="brow total"><span>الرصيد المتبقي</span><span style="color:{due_c_color};">{new_due_c:,.2f} ر {"✅ مسدد" if new_due_c<=0.5 else ""}</span></div>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العميل</div><div class="sig-en">Customer</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_cr}</span></div>
-</body></html>"""
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:750px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;margin-bottom:3px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}}
+    .badge{{background:#16a34a;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    .badge-en{{background:#f0fdf4;color:#16a34a;padding:3px 12px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
+    .qr-img{{width:70px;height:70px;border:2px solid #16a34a;border-radius:6px;}}
+    .amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}}
+    .amt-box .lbl{{font-size:13px;opacity:.85;}} .amt-box .lbl-en{{font-size:10px;opacity:.6;direction:ltr;}} .amt-box .val{{font-size:26px;font-weight:800;}}
+    .grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
+    .ig{{background:#f8fafc;border-radius:8px;padding:10px;border-right:3px solid #16a34a;}}
+    .ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:3px;}} .ig .val{{font-size:12px;font-weight:700;}}
+    .bal{{background:#f1f5f9;border-radius:10px;padding:12px 16px;margin-bottom:14px;}}
+    .bal h4{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}}
+    .brow{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;}}
+    .brow.total{{font-weight:700;font-size:13px;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:6px;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:32px;gap:14px;}}
+    .sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:6px;height:34px;}}
+    .sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:10px;color:#64748b;}}
+    .footer{{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;max-width:100%;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p><p style="margin-top:5px;">رقم الإيصال: <b>{rcpt_no_c}</b> | {today_cr}</p></div>
+      <div class="hdr-right"><div class="badge">إيصال دفعة عميل</div><div class="badge-en">Customer Payment Receipt</div><img class="qr-img" src="data:image/png;base64,{_qr_cp_b64}" alt="QR"></div>
+    </div>
+    <div class="amt-box">
+      <div><div class="lbl">المبلغ المستلم</div><div class="lbl-en">Amount Received</div></div>
+      <div class="val">{pa:,.2f} ريال</div>
+    </div>
+    <div class="grid2">
+      <div class="ig"><div class="lbl">العميل / Customer</div><div class="val">{sc}</div></div>
+      <div class="ig"><div class="lbl">رقم الطلبية / Order No.</div><div class="val">{so}</div></div>
+      <div class="ig"><div class="lbl">طريقة الدفع / Method</div><div class="val">{pt}</div></div>
+      <div class="ig"><div class="lbl">البنك / Bank</div><div class="val">{pb or "—"}</div></div>
+      <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_cr}</div></div>
+      <div class="ig"><div class="lbl">رقم الإيصال</div><div class="val">{rcpt_no_c}</div></div>
+    </div>
+    <div class="bal">
+      <h4>📊 ملخص حساب الطلبية</h4>
+      <div class="brow"><span>إجمالي الطلبية (مع الضريبة)</span><span>{ord_grand:,.2f} ر</span></div>
+      <div class="brow"><span>الدفعة المقدمة</span><span>{ord_adv:,.2f} ر</span></div>
+      <div class="brow"><span>المدفوع سابقاً</span><span>{ord_paid:,.2f} ر</span></div>
+      <div class="brow"><span>هذه الدفعة</span><span style="color:#16a34a;font-weight:700;">{pa:,.2f} ر</span></div>
+      <div class="brow total"><span>الرصيد المتبقي</span><span style="color:{due_c_color};">{new_due_c:,.2f} ر {"✅ مسدد" if new_due_c<=0.5 else ""}</span></div>
+    </div>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العميل</div><div class="sig-en">Customer</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_cr}</span></div>
+    </body></html>"""
                                 st.session_state.cust_rcpt_html  = cust_rcpt
                                 st.session_state.cust_rcpt_ready = True
                                 st.success(f"✅ تم تسجيل {pa:,.2f} ريال | متبقي: {new_due_c:,.2f} ريال")
@@ -2284,51 +2293,51 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                     # ---- HTML للطباعة ----
                     bal_color_f = "#dc2626" if (g_contract-g_adv-g_paid)>0 else "#16a34a"
                     stmt_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:11px;padding:22px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:10px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
-.cust-box{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
-.cust-box h2{{font-size:15px;margin-bottom:3px;}} .cust-box p{{font-size:10px;opacity:.85;}}
-.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}}
-.sc{{background:#f1f5f9;border-radius:8px;padding:10px;text-align:center;border-top:3px solid #1E3A8A;}}
-.sc.red{{border-top-color:#dc2626;background:#fef2f2;}} .sc .lbl{{font-size:9px;color:#94a3b8;}} .sc .val{{font-size:14px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:10px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:8px 6px;text-align:center;white-space:nowrap;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:8px 6px;text-align:center;}}
-.final{{background:#1E3A8A;color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:14px;}}
-.final .lbl{{font-size:12px;opacity:.85;}} .final .amt{{font-size:22px;font-weight:800;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{padding:12px;font-size:10px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">كشف حساب عميل</div><p style="color:#64748b;font-size:10px;margin-top:6px;">الفترة: {ds} — {de}</p><p style="color:#64748b;font-size:10px;">{today_cst}</p></div>
-</div>
-<div class="cust-box">
-  <div><h2>👤 {sel_c3}</h2><p>س.ت: {cust_cr} | الرقم الضريبي: {cust_tax}</p></div>
-  <div style="text-align:left;font-size:10px;"><p>عدد الطلبيات: {len(orders_stmt)}</p><p>الفترة: {ds} — {de}</p></div>
-</div>
-<div class="summary">
-  <div class="sc"><div class="lbl">إجمالي قيمة العقود</div><div class="val">{g_contract:,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">إجمالي المدفوع والمقدم</div><div class="val">{g_adv+g_paid:,.2f} ر</div></div>
-  <div class="sc red"><div class="lbl">المستحق الإجمالي</div><div class="val" style="color:#dc2626;">{max(0,g_contract-g_adv-g_paid):,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">الخزانات المتبقية</div><div class="val">{g_qty-g_del} / {g_qty}</div></div>
-</div>
-<table>
-  <thead><tr>
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:11px;padding:22px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:10px;margin:2px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+    .cust-box{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
+    .cust-box h2{{font-size:15px;margin-bottom:3px;}} .cust-box p{{font-size:10px;opacity:.85;}}
+    .summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}}
+    .sc{{background:#f1f5f9;border-radius:8px;padding:10px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .sc.red{{border-top-color:#dc2626;background:#fef2f2;}} .sc .lbl{{font-size:9px;color:#94a3b8;}} .sc .val{{font-size:14px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:10px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:8px 6px;text-align:center;white-space:nowrap;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:8px 6px;text-align:center;}}
+    .final{{background:#1E3A8A;color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:14px;}}
+    .final .lbl{{font-size:12px;opacity:.85;}} .final .amt{{font-size:22px;font-weight:800;}}
+    .footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+    @media print{{body{{padding:12px;font-size:10px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+      <div style="text-align:left;"><div class="badge">كشف حساب عميل</div><p style="color:#64748b;font-size:10px;margin-top:6px;">الفترة: {ds} — {de}</p><p style="color:#64748b;font-size:10px;">{today_cst}</p></div>
+    </div>
+    <div class="cust-box">
+      <div><h2>👤 {sel_c3}</h2><p>س.ت: {cust_cr} | الرقم الضريبي: {cust_tax}</p></div>
+      <div style="text-align:left;font-size:10px;"><p>عدد الطلبيات: {len(orders_stmt)}</p><p>الفترة: {ds} — {de}</p></div>
+    </div>
+    <div class="summary">
+      <div class="sc"><div class="lbl">إجمالي قيمة العقود</div><div class="val">{g_contract:,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">إجمالي المدفوع والمقدم</div><div class="val">{g_adv+g_paid:,.2f} ر</div></div>
+      <div class="sc red"><div class="lbl">المستحق الإجمالي</div><div class="val" style="color:#dc2626;">{max(0,g_contract-g_adv-g_paid):,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">الخزانات المتبقية</div><div class="val">{g_qty-g_del} / {g_qty}</div></div>
+    </div>
+    <table>
+      <thead><tr>
     <th>النوع</th><th>التاريخ</th><th>البيان</th><th>المبلغ (ريال)</th>
     <th>عدد الخزانات الكلي</th><th>المورّد حتى الآن</th>
     <th>قيمة الموردة</th><th>خزانات متبقية</th>
     <th>قيمة المتبقية</th><th>المستحق من العقد</th>
-  </tr></thead>
-  <tbody>{html_rows}</tbody>
-  <tfoot><tr>
+      </tr></thead>
+      <tbody>{html_rows}</tbody>
+      <tfoot><tr>
     <td colspan="3" style="padding:9px;">الإجماليات</td>
     <td style="padding:9px;text-align:center;">{g_contract+g_adv+g_paid:,.2f}</td>
     <td style="padding:9px;text-align:center;">{g_qty}</td>
@@ -2337,14 +2346,14 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:8px 6px;text-ali
     <td style="padding:9px;text-align:center;">{g_qty-g_del}</td>
     <td style="padding:9px;text-align:center;">—</td>
     <td style="padding:9px;text-align:center;">{max(0,g_contract-g_adv-g_paid):,.2f}</td>
-  </tr></tfoot>
-</table>
-<div class="final">
-  <div><div class="lbl">الرصيد الإجمالي المستحق</div><div style="font-size:10px;opacity:.7;">Total Outstanding Balance</div></div>
-  <div class="amt">{max(0,g_contract-g_adv-g_paid):,.2f} ريال</div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_cst}</span></div>
-</body></html>"""
+      </tr></tfoot>
+    </table>
+    <div class="final">
+      <div><div class="lbl">الرصيد الإجمالي المستحق</div><div style="font-size:10px;opacity:.7;">Total Outstanding Balance</div></div>
+      <div class="amt">{max(0,g_contract-g_adv-g_paid):,.2f} ريال</div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_cst}</span></div>
+    </body></html>"""
 
                     st.markdown("---")
                     col_dl1, col_dl2 = st.columns(2)
@@ -2355,10 +2364,13 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:8px 6px;text-ali
                         "text/html; charset=utf-8")
                     st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P للطباعة")
 
-# ==========================================
-# [3] التصنيع
-# ==========================================
-elif menu == "🏭 التصنيع":
+    # ==========================================
+    # [3] التصنيع
+    # ==========================================
+
+
+@st.fragment
+def page_production():
     st.subheader("🏭 إدارة صالة الإنتاج")
 
     # --- session state للتصنيع ---
@@ -2406,40 +2418,40 @@ elif menu == "🏭 التصنيع":
                 <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:center;">كجم / م²</td>
             </tr>"""
         return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
-.info-box{{background:#f1f5f9;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:18px;}}
-.info-item span{{display:block;}} .info-item .lbl{{font-size:10px;color:#94a3b8;}} .info-item .val{{font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:12px;}}
-.footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:40px;}}
-.sig-box{{text-align:center;width:160px;}} .sig-line{{border-top:1px solid #94a3b8;margin-bottom:6px;}} .sig-lbl{{font-size:11px;color:#64748b;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">{title}</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str}</p><p style="color:#64748b;font-size:11px;">رقم الوردية: #{shift_id}</p></div>
-</div>
-<div class="info-box">
-  <div class="info-item"><span class="lbl">رقم الطلبية</span><span class="val">{oid}</span></div>
-  <div class="info-item"><span class="lbl">عدد الخزانات المخططة</span><span class="val">{planned_qty} خزان</span></div>
-  <div class="info-item"><span class="lbl">المشرف</span><span class="val">{supervisor or '—'}</span></div>
-  <div class="info-item"><span class="lbl">تاريخ الوردية</span><span class="val">{today_str}</span></div>
-</div>
-<table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{rows}</tbody></table>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">أمين المخزن</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">المشرف</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">مدير الإنتاج</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
-</body></html>"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+    .info-box{{background:#f1f5f9;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:18px;}}
+    .info-item span{{display:block;}} .info-item .lbl{{font-size:10px;color:#94a3b8;}} .info-item .val{{font-size:13px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:12px;}}
+    .footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:40px;}}
+    .sig-box{{text-align:center;width:160px;}} .sig-line{{border-top:1px solid #94a3b8;margin-bottom:6px;}} .sig-lbl{{font-size:11px;color:#64748b;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p></div>
+      <div style="text-align:left;"><div class="badge">{title}</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str}</p><p style="color:#64748b;font-size:11px;">رقم الوردية: #{shift_id}</p></div>
+    </div>
+    <div class="info-box">
+      <div class="info-item"><span class="lbl">رقم الطلبية</span><span class="val">{oid}</span></div>
+      <div class="info-item"><span class="lbl">عدد الخزانات المخططة</span><span class="val">{planned_qty} خزان</span></div>
+      <div class="info-item"><span class="lbl">المشرف</span><span class="val">{supervisor or '—'}</span></div>
+      <div class="info-item"><span class="lbl">تاريخ الوردية</span><span class="val">{today_str}</span></div>
+    </div>
+    <table><thead><tr><th>المادة الخام</th><th>الكمية المطلوبة</th><th>الوحدة</th></tr></thead><tbody>{rows}</tbody></table>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">أمين المخزن</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">المشرف</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl">مدير الإنتاج</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+    </body></html>"""
 
     def make_comparison_html(oid, shift_id, supervisor, planned_qty, actual_qty, calc_dict, actual_totals, return_items, extra_items):
         today_str = datetime.date.today().strftime("%Y/%m/%d")
@@ -2464,29 +2476,29 @@ thead th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font
         for m,q in extra_items.items():
             ext_rows += f'<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;">{m}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;color:#dc2626;font-weight:700;">{q:,.3f}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:center;">كجم/م²</td></tr>'
         return f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
-.section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:18px 0 8px 0;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-  <div style="text-align:left;"><div class="badge">تقرير مقارنة المواد — إنهاء الوردية</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str} | وردية: #{shift_id}</p><p style="color:#64748b;font-size:11px;">طلبية: {oid} | مشرف: {supervisor or '—'} | مخطط: {planned_qty} | فعلي: {actual_qty}</p></div>
-</div>
-<div class="section-title">📊 جدول المقارنة: المصروف مقابل المستهلك</div>
-<table><thead><tr><th>المادة</th><th>المصروف (مخطط)</th><th>المستهلك (فعلي)</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>{rows}</tbody></table>
-{"<div class='section-title' style='color:#16a34a;'>🟢 أمر ارتجاع للمخزن</div><table><thead><tr><th>المادة</th><th>الكمية المرتجعة</th><th>الوحدة</th></tr></thead><tbody>"+ret_rows+"</tbody></table>" if ret_rows else ""}
-{"<div class='section-title' style='color:#dc2626;'>🔴 أمر صرف إضافي من المخزن</div><table><thead><tr><th>المادة</th><th>الكمية الإضافية</th><th>الوحدة</th></tr></thead><tbody>"+ext_rows+"</tbody></table>" if ext_rows else ""}
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
-</body></html>"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#d97706;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+    .section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:18px 0 8px 0;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+      <div style="text-align:left;"><div class="badge">تقرير مقارنة المواد — إنهاء الوردية</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_str} | وردية: #{shift_id}</p><p style="color:#64748b;font-size:11px;">طلبية: {oid} | مشرف: {supervisor or '—'} | مخطط: {planned_qty} | فعلي: {actual_qty}</p></div>
+    </div>
+    <div class="section-title">📊 جدول المقارنة: المصروف مقابل المستهلك</div>
+    <table><thead><tr><th>المادة</th><th>المصروف (مخطط)</th><th>المستهلك (فعلي)</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>{rows}</tbody></table>
+    {"<div class='section-title' style='color:#16a34a;'>🟢 أمر ارتجاع للمخزن</div><table><thead><tr><th>المادة</th><th>الكمية المرتجعة</th><th>الوحدة</th></tr></thead><tbody>"+ret_rows+"</tbody></table>" if ret_rows else ""}
+    {"<div class='section-title' style='color:#dc2626;'>🔴 أمر صرف إضافي من المخزن</div><table><thead><tr><th>المادة</th><th>الكمية الإضافية</th><th>الوحدة</th></tr></thead><tbody>"+ext_rows+"</tbody></table>" if ext_rows else ""}
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_str}</span></div>
+    </body></html>"""
 
     odf = run_query("SELECT o.order_id,c.trade_name,o.qty,o.tank_use,o.tank_capacity,o.tank_type,o.resin_exp,o.mat_exp,o.roving_exp,o.tissue_exp,o.catalyst_exp,o.calcium_exp,o.silica_exp FROM orders o JOIN customers c ON o.customer_id=c.id WHERE o.status='قيد التنفيذ'")
     if odf.empty:
@@ -2592,31 +2604,31 @@ thead th{{background:#1E3A8A;color:#fff;padding:9px 10px;text-align:center;font-
                     f'<td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:center;">{r["الحالة"]}</td></tr>'
                     for r in chk_rows)
                 shortage_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #dc2626;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#dc2626;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#dc2626;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
-.warn-box{{background:#fef2f2;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #dc2626;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
-thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-  <div style="text-align:left;"><div class="badge">تقرير عجز المواد الخام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po2}</p><p style="color:#64748b;font-size:11px;">الطلبية: {oid} | {tanks_today} خزان</p></div>
-</div>
-<div class="warn-box">
-  <p><b>⚠️ تنبيه:</b> المخزن لا يحتوي على كميات كافية لتصنيع {tanks_today} خزان من الطلبية {oid}</p>
-  <p>يرجى توفير المواد الناقصة قبل بدء الوردية.</p>
-</div>
-<table>
-  <thead><tr><th>المادة الخام</th><th>المخزون الحالي</th><th>المطلوب للوردية</th><th>العجز</th><th>الحالة</th></tr></thead>
-  <tbody>{short_rows_html}</tbody>
-</table>
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po2}</span></div>
-</body></html>"""
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}} body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #dc2626;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#dc2626;font-size:18px;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#dc2626;color:#fff;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:700;}}
+    .warn-box{{background:#fef2f2;border-radius:10px;padding:14px;margin-bottom:18px;border-right:4px solid #dc2626;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:18px;}}
+    thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-size:12px;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:26px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+      <div style="text-align:left;"><div class="badge">تقرير عجز المواد الخام</div><p style="margin-top:8px;color:#64748b;font-size:11px;">التاريخ: {today_po2}</p><p style="color:#64748b;font-size:11px;">الطلبية: {oid} | {tanks_today} خزان</p></div>
+    </div>
+    <div class="warn-box">
+      <p><b>⚠️ تنبيه:</b> المخزن لا يحتوي على كميات كافية لتصنيع {tanks_today} خزان من الطلبية {oid}</p>
+      <p>يرجى توفير المواد الناقصة قبل بدء الوردية.</p>
+    </div>
+    <table>
+      <thead><tr><th>المادة الخام</th><th>المخزون الحالي</th><th>المطلوب للوردية</th><th>العجز</th><th>الحالة</th></tr></thead>
+      <tbody>{short_rows_html}</tbody>
+    </table>
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_po2}</span></div>
+    </body></html>"""
                 st.download_button("🖨️ طباعة تقرير العجز (HTML)", shortage_html.encode('utf-8'),
                     f"shortage_{oid}_{datetime.date.today()}.html", "text/html; charset=utf-8",
                     key="dl_shortage")
@@ -2806,10 +2818,13 @@ thead th{{background:#dc2626;color:#fff;padding:9px 10px;text-align:center;font-
                 st.session_state.pop('_actual_qty_done', None)
                 st.rerun()
 
-# ==========================================
-# [4] المشتريات والمخزن
-# ==========================================
-elif menu == "📥 المشتريات والمخزن":
+    # ==========================================
+    # [4] المشتريات والمخزن
+    # ==========================================
+
+
+@st.fragment
+def page_inventory():
     st.subheader("📥 المشتريات والمخزن")
     tabs = st.tabs(["🤝 مورد جديد","🚚 فاتورة توريد","💳 دفعات مورد","🔍 كشف حساب مورد","🔧 ضبط المخزن","📊 رصيد المخزن","💰 أسعار المخزون","🗑️ حذف مورد"])
 
@@ -3070,7 +3085,7 @@ elif menu == "📥 المشتريات والمخزن":
                                     color=(30,58,138), module_size=6)
                                 due_color = "#16a34a" if new_due <= 0.5 else "#dc2626"
                                 due_label = f"{max(0,new_due):,.2f} ريال" + (" ✅ مسدد" if new_due<=0.5 else "")
-    
+
                                 sp_html = f"""<!DOCTYPE html>
     <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <style>
@@ -3235,55 +3250,55 @@ elif menu == "📥 المشتريات والمخزن":
                         </tr>"""
                 bal_color = "#dc2626" if bal > 0 else "#16a34a"
                 sup_stmt_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-.sup-card{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
-.sup-card h2{{font-size:16px;margin-bottom:4px;}} .sup-card p{{font-size:11px;opacity:.85;}}
-.period-box{{background:rgba(255,255,255,.2);border-radius:8px;padding:8px 14px;text-align:center;}}
-.period-box span{{display:block;font-size:10px;opacity:.8;}} .period-box strong{{font-size:13px;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
-.s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
-.s-card.danger{{border-top-color:#dc2626;background:#fef2f2;}}
-.s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;}}
-.section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:16px 0 8px 0;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-.final-box{{background:#1E3A8A;color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:18px;}}
-.final-box .lbl{{font-size:13px;opacity:.85;}} .final-box .amount{{font-size:24px;font-weight:800;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">كشف حساب مورد</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds3} — {de3}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_stmt}</p></div>
-</div>
-<div class="sup-card">
-  <div><h2>🤝 {ss3}</h2><p>المورد</p></div>
-  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    .sup-card{{background:linear-gradient(135deg,#1E3A8A,#2563eb);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
+    .sup-card h2{{font-size:16px;margin-bottom:4px;}} .sup-card p{{font-size:11px;opacity:.85;}}
+    .period-box{{background:rgba(255,255,255,.2);border-radius:8px;padding:8px 14px;text-align:center;}}
+    .period-box span{{display:block;font-size:10px;opacity:.8;}} .period-box strong{{font-size:13px;}}
+    .summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
+    .s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .s-card.danger{{border-top-color:#dc2626;background:#fef2f2;}}
+    .s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;}}
+    .section-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin:16px 0 8px 0;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    .final-box{{background:#1E3A8A;color:#fff;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:18px;}}
+    .final-box .lbl{{font-size:13px;opacity:.85;}} .final-box .amount{{font-size:24px;font-weight:800;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+      <div style="text-align:left;"><div class="badge">كشف حساب مورد</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds3} — {de3}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_stmt}</p></div>
+    </div>
+    <div class="sup-card">
+      <div><h2>🤝 {ss3}</h2><p>المورد</p></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
     <div class="period-box"><span>من</span><strong>{ds3}</strong></div>
     <div class="period-box"><span>إلى</span><strong>{de3}</strong></div>
-  </div>
-</div>
-<div class="summary">
-  <div class="s-card"><div class="lbl">إجمالي الفواتير (مع الضريبة)</div><div class="val">{ti:,.2f} ر</div></div>
-  <div class="s-card"><div class="lbl">إجمالي المدفوع</div><div class="val" style="color:#16a34a;">{tp2:,.2f} ر</div></div>
-  <div class="s-card danger"><div class="lbl">🔴 المستحق للمورد</div><div class="val" style="color:{bal_color};">{bal:,.2f} ر</div></div>
-</div>
-{"<div class='section-title'>📄 الفواتير (رقم الفاتورة | قيمة الفاتورة | المدفوع | المستحق)</div><table><thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>المادة</th><th>قيمة الفاتورة (ر)</th><th>المدفوع (ر)</th><th>المستحق (ر)</th></tr></thead><tbody>" + inv_rows_html + "</tbody></table>" if inv_rows_html else ""}
-{"<div class='section-title'>💵 الدفعات (تاريخ الدفعة | مبلغ الدفعة | الرصيد المتبقي)</div><table><thead><tr><th>تاريخ الدفعة</th><th>رقم الفاتورة</th><th>مبلغ الدفعة (ر)</th><th>طريقة الدفع</th><th>البنك</th><th>الرصيد الإجمالي المستحق</th></tr></thead><tbody>" + pay_rows_html + "</tbody></table>" if pay_rows_html else ""}
-<div class="final-box">
-  <div><div class="lbl">الرصيد المستحق للمورد</div><div style="font-size:10px;opacity:.7;">Net Balance Due to Supplier</div></div>
-  <div class="amount">{bal:,.2f} ريال</div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_stmt}</span></div>
-</body></html>"""
+      </div>
+    </div>
+    <div class="summary">
+      <div class="s-card"><div class="lbl">إجمالي الفواتير (مع الضريبة)</div><div class="val">{ti:,.2f} ر</div></div>
+      <div class="s-card"><div class="lbl">إجمالي المدفوع</div><div class="val" style="color:#16a34a;">{tp2:,.2f} ر</div></div>
+      <div class="s-card danger"><div class="lbl">🔴 المستحق للمورد</div><div class="val" style="color:{bal_color};">{bal:,.2f} ر</div></div>
+    </div>
+    {"<div class='section-title'>📄 الفواتير (رقم الفاتورة | قيمة الفاتورة | المدفوع | المستحق)</div><table><thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>المادة</th><th>قيمة الفاتورة (ر)</th><th>المدفوع (ر)</th><th>المستحق (ر)</th></tr></thead><tbody>" + inv_rows_html + "</tbody></table>" if inv_rows_html else ""}
+    {"<div class='section-title'>💵 الدفعات (تاريخ الدفعة | مبلغ الدفعة | الرصيد المتبقي)</div><table><thead><tr><th>تاريخ الدفعة</th><th>رقم الفاتورة</th><th>مبلغ الدفعة (ر)</th><th>طريقة الدفع</th><th>البنك</th><th>الرصيد الإجمالي المستحق</th></tr></thead><tbody>" + pay_rows_html + "</tbody></table>" if pay_rows_html else ""}
+    <div class="final-box">
+      <div><div class="lbl">الرصيد المستحق للمورد</div><div style="font-size:10px;opacity:.7;">Net Balance Due to Supplier</div></div>
+      <div class="amount">{bal:,.2f} ريال</div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 — {today_stmt}</span></div>
+    </body></html>"""
 
                 col_s1, col_s2 = st.columns(2)
                 col_s1.download_button("⬇️ تنزيل CSV", df_to_csv(ph) if not ph.empty else df_to_csv(pd.DataFrame()), f"sup_{ss3}.csv", "text/csv")
@@ -3376,10 +3391,13 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
                     st.session_state.confirm_del_sup = False
                     st.rerun()
 
-# ==========================================
-# [5] الشحن والفواتير
-# ==========================================
-elif menu == "💰 الشحن والفواتير":
+    # ==========================================
+    # [5] الشحن والفواتير
+    # ==========================================
+
+
+@st.fragment
+def page_shipping():
     st.subheader("💰 الشحن والفواتير")
     tabs = st.tabs(["🚚 أمر تسليم","📄 فاتورة ضريبية","🏦 سند قبض","🔍 استعلام فواتير","🏷️ بطاقات QR"])
 
@@ -3424,85 +3442,85 @@ elif menu == "💰 الشحن والفواتير":
         else:
             _logo_tag_do = '<div style="font-size:32px;margin-bottom:6px;">🏭</div>'
         _tpl_do = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
-.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
-.badge{{background:#1E3A8A;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
-.badge-en{{background:#f1f5f9;color:#1E3A8A;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
-.qr-hdr{{width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;overflow:hidden;}}
-.qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
-.info-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f1f5f9;border-radius:10px;padding:16px;margin-bottom:20px;}}
-.info-item .lbl{{font-size:10px;color:#94a3b8;display:block;margin-bottom:3px;}}
-.info-item .val{{font-size:13px;font-weight:700;color:#1e293b;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
-tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-.sig-section{{margin-top:40px;}}
-.sig-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:24px;}}
-.sig-title span{{font-size:11px;color:#64748b;margin-right:8px;direction:ltr;}}
-.sig-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;}}
-.sig-box{{text-align:center;}}
-.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
-.sig-ar{{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;}}
-.sig-en{{font-size:11px;color:#64748b;}}
-.footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;max-width:100%;}}}}
-</style>
-</head>
-<body>
-<div class="hdr">
-  <div class="hdr-left">
+    <html dir="rtl" lang="ar">
+    <head>
+    <meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+    .hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+    .badge-en{{background:#f1f5f9;color:#1E3A8A;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #1E3A8A;direction:ltr;}}
+    .qr-hdr{{width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;overflow:hidden;}}
+    .qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
+    .info-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f1f5f9;border-radius:10px;padding:16px;margin-bottom:20px;}}
+    .info-item .lbl{{font-size:10px;color:#94a3b8;display:block;margin-bottom:3px;}}
+    .info-item .val{{font-size:13px;font-weight:700;color:#1e293b;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
+    tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    .sig-section{{margin-top:40px;}}
+    .sig-title{{font-size:13px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:24px;}}
+    .sig-title span{{font-size:11px;color:#64748b;margin-right:8px;direction:ltr;}}
+    .sig-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;}}
+    .sig-box{{text-align:center;}}
+    .sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
+    .sig-ar{{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;}}
+    .sig-en{{font-size:11px;color:#64748b;}}
+    .footer{{margin-top:30px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;max-width:100%;}}}}
+    </style>
+    </head>
+    <body>
+    <div class="hdr">
+      <div class="hdr-left">
     {_logo_tag_do}
     <h1>{FACTORY_NAME}</h1>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
-  </div>
-  <div class="hdr-right">
+      </div>
+      <div class="hdr-right">
     <div class="badge">أمر التسليم رقم: {did}</div>
     <div class="badge-en">Delivery Note No. {did}</div>
     <img src="data:image/png;base64,{_qr_do_b64}" style="width:80px;height:80px;border:2px solid #1E3A8A;border-radius:8px;" alt="QR">
     <p style="font-size:10px;color:#94a3b8;text-align:left;">التاريخ: {today_str}</p>
-  </div>
-</div>
-<div class="info-grid">
-  <div class="info-item"><span class="lbl">العميل / Customer</span><span class="val">{customer_name}</span></div>
-  <div class="info-item"><span class="lbl">رقم الطلبية / Order No.</span><span class="val">{oid}</span></div>
-  <div class="info-item"><span class="lbl">التاريخ / Date</span><span class="val">{today_str}</span></div>
-  <div class="info-item"><span class="lbl">نوع الخزان / Tank Type</span><span class="val">{tu}</span></div>
-  <div class="info-item"><span class="lbl">السعة / Capacity</span><span class="val">{tc}</span></div>
-  <div class="info-item"><span class="lbl">نوع التركيب / Installation</span><span class="val">{tt}</span></div>
-  <div class="info-item"><span class="lbl">عدد الخزانات / Qty</span><span class="val">{qty} خزان</span></div>
-  <div class="info-item"><span class="lbl">اسم السائق / Driver</span><span class="val">{driver_name}</span></div>
-  <div class="info-item"><span class="lbl">رقم اللوحة / Plate</span><span class="val">{car_plate}</span></div>
-  <div class="info-item"><span class="lbl">رقم الإقامة / Iqama</span><span class="val">{driver_iqama}</span></div>
-</div>
-<table>
-  <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Tank Description</th></tr></thead>
-  <tbody>{sn_rows}</tbody>
-</table>
-<div class="sig-section">
-  <div class="sig-title">التوقيعات <span>/ Signatures</span></div>
-  <div class="sig-grid">
+      </div>
+    </div>
+    <div class="info-grid">
+      <div class="info-item"><span class="lbl">العميل / Customer</span><span class="val">{customer_name}</span></div>
+      <div class="info-item"><span class="lbl">رقم الطلبية / Order No.</span><span class="val">{oid}</span></div>
+      <div class="info-item"><span class="lbl">التاريخ / Date</span><span class="val">{today_str}</span></div>
+      <div class="info-item"><span class="lbl">نوع الخزان / Tank Type</span><span class="val">{tu}</span></div>
+      <div class="info-item"><span class="lbl">السعة / Capacity</span><span class="val">{tc}</span></div>
+      <div class="info-item"><span class="lbl">نوع التركيب / Installation</span><span class="val">{tt}</span></div>
+      <div class="info-item"><span class="lbl">عدد الخزانات / Qty</span><span class="val">{qty} خزان</span></div>
+      <div class="info-item"><span class="lbl">اسم السائق / Driver</span><span class="val">{driver_name}</span></div>
+      <div class="info-item"><span class="lbl">رقم اللوحة / Plate</span><span class="val">{car_plate}</span></div>
+      <div class="info-item"><span class="lbl">رقم الإقامة / Iqama</span><span class="val">{driver_iqama}</span></div>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Tank Description</th></tr></thead>
+      <tbody>{sn_rows}</tbody>
+    </table>
+    <div class="sig-section">
+      <div class="sig-title">التوقيعات <span>/ Signatures</span></div>
+      <div class="sig-grid">
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع السائق واسمه</div><div class="sig-en">Driver Signature &amp; Name</div></div>
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع موقع الاستلام</div><div class="sig-en">Receiver's Signature</div></div>
     <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الموقع</div><div class="sig-en">Site Stamp</div></div>
-  </div>
-</div>
-<div class="footer">
-  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-  <span>نظام ERP v7.0 | {today_str}</span>
-</div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+      <span>نظام ERP v7.0 | {today_str}</span>
+    </div>
 
-</body></html>"""
+    </body></html>"""
         return _tpl_do
 
     def make_invoice_html(inv_n, did, oid, customer_name, cr_number, tax_number,
@@ -3542,75 +3560,75 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         else:
             _logo_tag_inv = '<div style="font-size:32px;margin-bottom:6px;">🏭</div>'
         _tpl_inv = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
-.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
-.badge-inv{{background:#dc2626;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
-.badge-en{{background:#fff0f0;color:#dc2626;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #dc2626;direction:ltr;}}
-.qr-hdr{{width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;overflow:hidden;}}
-.qr-hdr canvas,.qr-hdr img{{width:90px!important;height:90px!important;}}
-.parties{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}}
-.party-box{{background:#f8fafc;border-radius:10px;padding:14px;border-right:4px solid #1E3A8A;}}
-.party-box h3{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}}
-.party-box p{{font-size:11px;margin:3px 0;color:#475569;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
-tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-.sn-table thead th{{background:#374151;}}
-.totals{{background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:16px;}}
-.trow{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:13px;}}
-.trow:last-child{{border:none;}}
-.net-box{{background:#1E3A8A;color:#fff;border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}}
-.net-box .lbl{{font-size:13px;opacity:.85;}}
-.net-box .lbl-en{{font-size:10px;opacity:.65;}}
-.net-box .amount{{font-size:24px;font-weight:800;}}
-.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;max-width:100%;}}}}
-</style>
-</head>
-<body>
-<div class="hdr">
-  <div class="hdr-left">
+    <html dir="rtl" lang="ar">
+    <head>
+    <meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:900px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+    .hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+    .badge-inv{{background:#dc2626;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+    .badge-en{{background:#fff0f0;color:#dc2626;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #dc2626;direction:ltr;}}
+    .qr-hdr{{width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;overflow:hidden;}}
+    .qr-hdr canvas,.qr-hdr img{{width:90px!important;height:90px!important;}}
+    .parties{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}}
+    .party-box{{background:#f8fafc;border-radius:10px;padding:14px;border-right:4px solid #1E3A8A;}}
+    .party-box h3{{color:#1E3A8A;font-size:12px;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}}
+    .party-box p{{font-size:11px;margin:3px 0;color:#475569;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:14px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px;text-align:center;font-size:12px;}}
+    tbody td{{padding:8px 10px;border:1px solid #e2e8f0;font-size:12px;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    .sn-table thead th{{background:#374151;}}
+    .totals{{background:#f1f5f9;border-radius:10px;padding:14px;margin-bottom:16px;}}
+    .trow{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:13px;}}
+    .trow:last-child{{border:none;}}
+    .net-box{{background:#1E3A8A;color:#fff;border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}}
+    .net-box .lbl{{font-size:13px;opacity:.85;}}
+    .net-box .lbl-en{{font-size:10px;opacity:.65;}}
+    .net-box .amount{{font-size:24px;font-weight:800;}}
+    .footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;max-width:100%;}}}}
+    </style>
+    </head>
+    <body>
+    <div class="hdr">
+      <div class="hdr-left">
     {_logo_tag_inv}
     <h1>{FACTORY_NAME}</h1>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR} &nbsp;|&nbsp; الرقم الضريبي: {FACTORY_TAX}</p>
     <p style="margin-top:6px;color:#64748b;">رقم الفاتورة: <b>{inv_n}</b> &nbsp;|&nbsp; التاريخ: {today_str}</p>
-  </div>
-  <div class="hdr-right">
+      </div>
+      <div class="hdr-right">
     <div class="badge-inv">فاتورة ضريبية رسمية</div>
     <div class="badge-en">TAX INVOICE</div>
     <img src="data:image/png;base64,{_qr_inv_b64}" style="width:90px;height:90px;border:2px solid #dc2626;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق / Scan to Verify</p>
-  </div>
-</div>
-<div class="parties">
-  <div class="party-box">
+      </div>
+    </div>
+    <div class="parties">
+      <div class="party-box">
     <h3>🏭 البائع / Seller</h3>
     <p><b>{FACTORY_NAME}</b></p>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR}</p>
     <p>الرقم الضريبي: {FACTORY_TAX}</p>
-  </div>
-  <div class="party-box">
+      </div>
+      <div class="party-box">
     <h3>👤 المشتري / Buyer</h3>
     <p><b>{customer_name}</b></p>
     <p>س.ت: {cr_number}</p>
     <p>الرقم الضريبي: {tax_number}</p>
     <p>أمر التسليم: #{did}</p>
-  </div>
-</div>
-<table>
-  <thead>
+      </div>
+    </div>
+    <table>
+      <thead>
     <tr>
       <th>الوصف / Description</th>
       <th>النوع / Type</th>
@@ -3619,8 +3637,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
       <th>سعر الوحدة / Unit Price</th>
       <th>الإجمالي / Total</th>
     </tr>
-  </thead>
-  <tbody>
+      </thead>
+      <tbody>
     <tr>
       <td style="text-align:right;padding-right:12px;">خزانات فايبر جلاس<br><span style="font-size:10px;color:#64748b;">Fibreglass Tanks</span></td>
       <td style="text-align:center;">{tu}</td>
@@ -3629,29 +3647,29 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
       <td style="text-align:center;">{unit_price:,.2f} ر</td>
       <td style="text-align:center;font-weight:700;">{sub:,.2f} ر</td>
     </tr>
-  </tbody>
-</table>
-<p style="font-size:12px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:8px;">الأرقام التسلسلية للخزانات / Tank Serial Numbers</p>
-<table class="sn-table">
-  <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Description</th></tr></thead>
-  <tbody>{sn_rows_inv}</tbody>
-</table>
-<div class="totals">
-  <div class="trow"><span>المبلغ قبل الضريبة / Subtotal</span><span>{sub:,.2f} ر</span></div>
-  <div class="trow"><span>ضريبة القيمة المضافة 15% / VAT 15%</span><span>{vat:,.2f} ر</span></div>
-  <div class="trow"><span style="font-weight:700;">الإجمالي شامل الضريبة / Total incl. VAT</span><span style="font-weight:700;">{grand:,.2f} ر</span></div>
-  <div class="trow"><span>خصم الدفعة المقدمة / Advance Deducted</span><span style="color:#dc2626;">- {adv_d:,.2f} ر</span></div>
-</div>
-<div class="net-box">
-  <div><div class="lbl">الصافي المستحق</div><div class="lbl-en">Net Amount Due</div></div>
-  <div class="amount">{net:,.2f} ريال</div>
-</div>
-<div class="footer">
-  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-  <span>نظام ERP v7.0 | {today_str}</span>
-</div>
+      </tbody>
+    </table>
+    <p style="font-size:12px;font-weight:700;color:#1E3A8A;border-right:4px solid #FBBF24;padding-right:10px;margin-bottom:8px;">الأرقام التسلسلية للخزانات / Tank Serial Numbers</p>
+    <table class="sn-table">
+      <thead><tr><th>#</th><th>الرقم التسلسلي / Serial Number</th><th>وصف الخزان / Description</th></tr></thead>
+      <tbody>{sn_rows_inv}</tbody>
+    </table>
+    <div class="totals">
+      <div class="trow"><span>المبلغ قبل الضريبة / Subtotal</span><span>{sub:,.2f} ر</span></div>
+      <div class="trow"><span>ضريبة القيمة المضافة 15% / VAT 15%</span><span>{vat:,.2f} ر</span></div>
+      <div class="trow"><span style="font-weight:700;">الإجمالي شامل الضريبة / Total incl. VAT</span><span style="font-weight:700;">{grand:,.2f} ر</span></div>
+      <div class="trow"><span>خصم الدفعة المقدمة / Advance Deducted</span><span style="color:#dc2626;">- {adv_d:,.2f} ر</span></div>
+    </div>
+    <div class="net-box">
+      <div><div class="lbl">الصافي المستحق</div><div class="lbl-en">Net Amount Due</div></div>
+      <div class="amount">{net:,.2f} ريال</div>
+    </div>
+    <div class="footer">
+      <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+      <span>نظام ERP v7.0 | {today_str}</span>
+    </div>
 
-</body></html>"""
+    </body></html>"""
         return _tpl_inv
 
     def make_qr_labels_html(serials_list, tank_use, tank_capacity, tank_type,
@@ -3693,8 +3711,8 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
         label_pages = ""
         for item in cards_data:
             label_pages += f"""
-<div class="a4-page">
-  <div class="card">
+    <div class="a4-page">
+      <div class="card">
     <div class="card-header">
       <div class="header-left">
         <div class="factory-icon">🏭</div>
@@ -3737,107 +3755,107 @@ tbody tr:nth-child(even){{background:#f8fafc;}}
       <span>{FACTORY_NAME} — {FACTORY_ADDRESS}</span>
       <span>نظام ERP v7.0 | {today_str}</span>
     </div>
-  </div>
-</div>"""
+      </div>
+    </div>"""
 
         return f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
-.a4-page{{
-  width:210mm;min-height:297mm;
-  background:#fff;margin:0 auto 20px auto;
-  padding:14mm 14mm;
-  page-break-after:always;
-  display:flex;flex-direction:column;justify-content:center;
-}}
-.card{{
-  width:100%;border:3px solid #1E3A8A;border-radius:14px;
-  overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.12);
-}}
-/* هيدر */
-.card-header{{
-  background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
-  color:#fff;padding:14px 18px;
-  display:flex;justify-content:space-between;align-items:center;
-}}
-.header-left{{display:flex;gap:10px;align-items:center;}}
-.factory-icon{{font-size:30px;}}
-.factory-name{{font-size:16px;font-weight:800;margin-bottom:2px;}}
-.factory-sub{{font-size:10px;opacity:.8;direction:ltr;}}
-.factory-addr{{font-size:9px;opacity:.7;margin-top:1px;}}
-.header-right{{text-align:center;}}
-.card-badge{{background:rgba(255,255,255,.2);padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:3px;}}
-.card-badge-en{{font-size:10px;opacity:.8;direction:ltr;}}
-/* الرقم المسلسل */
-.sn-bar{{
-  background:#eff6ff;border-bottom:2px solid #bfdbfe;
-  padding:10px 18px;text-align:center;
-  font-family:monospace;font-size:17px;font-weight:800;
-  color:#1E3A8A;letter-spacing:1px;
-}}
-/* Body: QR يسار + grid يمين */
-.card-body{{
-  display:flex;flex-direction:row;gap:0;
-  min-height:200px;
-}}
-.qr-col{{
-  background:#f8fafc;border-left:1px solid #e2e8f0;
-  padding:18px 16px;
-  display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:8px;
-  width:190px;flex-shrink:0;
-}}
-.qr-img{{
-  width:150px;height:150px;
-  border:3px solid #1E3A8A;border-radius:8px;
-  display:block;
-}}
-.qr-caption{{font-size:10px;color:#64748b;text-align:center;line-height:1.5;}}
-.seq-badge{{
-  background:#1E3A8A;color:#fff;
-  padding:5px 10px;border-radius:6px;
-  font-size:10px;font-weight:700;text-align:center;line-height:1.5;
-}}
-/* Grid البيانات */
-.info-col{{
-  flex:1;padding:14px 16px;
-  display:flex;flex-direction:column;justify-content:center;
-}}
-.info-grid{{
-  display:grid;grid-template-columns:1fr 1fr;gap:7px;
-}}
-.ig{{
-  background:#f8fafc;border-radius:6px;padding:7px 9px;
-  border-right:3px solid #1E3A8A;
-}}
-.ig-lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}}
-.ig-val{{font-size:12px;font-weight:700;color:#1e293b;word-break:break-word;}}
-.ig-val.ltr{{direction:ltr;text-align:left;font-size:11px;}}
-/* فوتر */
-.card-footer{{
-  background:#f1f5f9;border-top:1px solid #e2e8f0;
-  padding:8px 18px;display:flex;
-  justify-content:space-between;font-size:9px;color:#64748b;
-}}
-@media print{{
-  body{{background:#fff;}}
-  .a4-page{{
+    <html dir="rtl" lang="ar">
+    <head>
+    <meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
+    .a4-page{{
+      width:210mm;min-height:297mm;
+      background:#fff;margin:0 auto 20px auto;
+      padding:14mm 14mm;
+      page-break-after:always;
+      display:flex;flex-direction:column;justify-content:center;
+    }}
+    .card{{
+      width:100%;border:3px solid #1E3A8A;border-radius:14px;
+      overflow:hidden;box-shadow:0 4px 20px rgba(30,58,138,.12);
+    }}
+    /* هيدر */
+    .card-header{{
+      background:linear-gradient(135deg,#1E3A8A 0%,#2563eb 100%);
+      color:#fff;padding:14px 18px;
+      display:flex;justify-content:space-between;align-items:center;
+    }}
+    .header-left{{display:flex;gap:10px;align-items:center;}}
+    .factory-icon{{font-size:30px;}}
+    .factory-name{{font-size:16px;font-weight:800;margin-bottom:2px;}}
+    .factory-sub{{font-size:10px;opacity:.8;direction:ltr;}}
+    .factory-addr{{font-size:9px;opacity:.7;margin-top:1px;}}
+    .header-right{{text-align:center;}}
+    .card-badge{{background:rgba(255,255,255,.2);padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:3px;}}
+    .card-badge-en{{font-size:10px;opacity:.8;direction:ltr;}}
+    /* الرقم المسلسل */
+    .sn-bar{{
+      background:#eff6ff;border-bottom:2px solid #bfdbfe;
+      padding:10px 18px;text-align:center;
+      font-family:monospace;font-size:17px;font-weight:800;
+      color:#1E3A8A;letter-spacing:1px;
+    }}
+    /* Body: QR يسار + grid يمين */
+    .card-body{{
+      display:flex;flex-direction:row;gap:0;
+      min-height:200px;
+    }}
+    .qr-col{{
+      background:#f8fafc;border-left:1px solid #e2e8f0;
+      padding:18px 16px;
+      display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:8px;
+      width:190px;flex-shrink:0;
+    }}
+    .qr-img{{
+      width:150px;height:150px;
+      border:3px solid #1E3A8A;border-radius:8px;
+      display:block;
+    }}
+    .qr-caption{{font-size:10px;color:#64748b;text-align:center;line-height:1.5;}}
+    .seq-badge{{
+      background:#1E3A8A;color:#fff;
+      padding:5px 10px;border-radius:6px;
+      font-size:10px;font-weight:700;text-align:center;line-height:1.5;
+    }}
+    /* Grid البيانات */
+    .info-col{{
+      flex:1;padding:14px 16px;
+      display:flex;flex-direction:column;justify-content:center;
+    }}
+    .info-grid{{
+      display:grid;grid-template-columns:1fr 1fr;gap:7px;
+    }}
+    .ig{{
+      background:#f8fafc;border-radius:6px;padding:7px 9px;
+      border-right:3px solid #1E3A8A;
+    }}
+    .ig-lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}}
+    .ig-val{{font-size:12px;font-weight:700;color:#1e293b;word-break:break-word;}}
+    .ig-val.ltr{{direction:ltr;text-align:left;font-size:11px;}}
+    /* فوتر */
+    .card-footer{{
+      background:#f1f5f9;border-top:1px solid #e2e8f0;
+      padding:8px 18px;display:flex;
+      justify-content:space-between;font-size:9px;color:#64748b;
+    }}
+    @media print{{
+      body{{background:#fff;}}
+      .a4-page{{
     width:210mm;min-height:297mm;
     margin:0;padding:12mm;
     page-break-after:always;
-  }}
-  .card{{box-shadow:none;}}
-}}
-</style>
-</head>
-<body>
-{label_pages}
-</body></html>"""
+      }}
+      .card{{box-shadow:none;}}
+    }}
+    </style>
+    </head>
+    <body>
+    {label_pages}
+    </body></html>"""
 
     # ===== تبويب 1: أمر تسليم =====
     with tabs[0]:
@@ -4107,89 +4125,89 @@ body{{font-family:'Cairo',sans-serif;background:#e2e8f0;color:#1e293b;}}
                         _qr_rcpt_b64 = make_qr_b64(qr_rcpt, color=(22,163,74), module_size=6)
 
                         receipt_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:800px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:14px;margin-bottom:20px;}}
-.hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
-.hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
-.rcpt-badge{{background:#16a34a;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
-.rcpt-badge-en{{background:#f0fdf4;color:#16a34a;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
-.qr-hdr{{width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;overflow:hidden;}}
-.qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
-.amount-box{{
-  background:linear-gradient(135deg,#16a34a,#15803d);
-  color:#fff;border-radius:14px;padding:20px 24px;
-  display:flex;justify-content:space-between;align-items:center;
-  margin:20px 0;
-}}
-.amount-box .lbl{{font-size:14px;opacity:.85;}}
-.amount-box .lbl-en{{font-size:11px;opacity:.65;direction:ltr;}}
-.amount-box .amount{{font-size:32px;font-weight:800;}}
-.info-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px;}}
-.ig{{background:#f8fafc;border-radius:8px;padding:12px;border-right:3px solid #16a34a;}}
-.ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:4px;}}
-.ig .val{{font-size:13px;font-weight:700;}}
-.balance-box{{background:#eff6ff;border-radius:10px;padding:14px;margin-bottom:20px;border:1px solid #bfdbfe;}}
-.balance-box h4{{color:#1E3A8A;font-size:13px;margin-bottom:8px;}}
-.b-row{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #e2e8f0;}}
-.b-row:last-child{{border:none;font-weight:700;font-size:13px;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:40px;gap:20px;}}
-.sig-box{{text-align:center;flex:1;}}
-.sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
-.sig-lbl-ar{{font-size:12px;font-weight:700;}}
-.sig-lbl-en{{font-size:10px;color:#64748b;}}
-.footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div class="hdr-left">
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:30px;max-width:800px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr-left h1{{color:#1E3A8A;font-size:20px;font-weight:800;margin-bottom:4px;}}
+    .hdr-left p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .hdr-right{{text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}}
+    .rcpt-badge{{background:#16a34a;color:#fff;padding:8px 20px;border-radius:20px;font-size:15px;font-weight:800;}}
+    .rcpt-badge-en{{background:#f0fdf4;color:#16a34a;padding:4px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #16a34a;direction:ltr;}}
+    .qr-hdr{{width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;overflow:hidden;}}
+    .qr-hdr canvas,.qr-hdr img{{width:80px!important;height:80px!important;}}
+    .amount-box{{
+      background:linear-gradient(135deg,#16a34a,#15803d);
+      color:#fff;border-radius:14px;padding:20px 24px;
+      display:flex;justify-content:space-between;align-items:center;
+      margin:20px 0;
+    }}
+    .amount-box .lbl{{font-size:14px;opacity:.85;}}
+    .amount-box .lbl-en{{font-size:11px;opacity:.65;direction:ltr;}}
+    .amount-box .amount{{font-size:32px;font-weight:800;}}
+    .info-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px;}}
+    .ig{{background:#f8fafc;border-radius:8px;padding:12px;border-right:3px solid #16a34a;}}
+    .ig .lbl{{font-size:10px;color:#94a3b8;margin-bottom:4px;}}
+    .ig .val{{font-size:13px;font-weight:700;}}
+    .balance-box{{background:#eff6ff;border-radius:10px;padding:14px;margin-bottom:20px;border:1px solid #bfdbfe;}}
+    .balance-box h4{{color:#1E3A8A;font-size:13px;margin-bottom:8px;}}
+    .b-row{{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #e2e8f0;}}
+    .b-row:last-child{{border:none;font-weight:700;font-size:13px;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:40px;gap:20px;}}
+    .sig-box{{text-align:center;flex:1;}}
+    .sig-line{{border-top:2px solid #1e293b;margin-bottom:8px;height:40px;}}
+    .sig-lbl-ar{{font-size:12px;font-weight:700;}}
+    .sig-lbl-en{{font-size:10px;color:#64748b;}}
+    .footer{{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;max-width:100%;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div class="hdr-left">
     <div style="font-size:32px;margin-bottom:6px;">🏭</div>
     <h1>{FACTORY_NAME}</h1>
     <p>{FACTORY_ADDRESS}</p>
     <p>س.ت: {FACTORY_CR} | الرقم الضريبي: {FACTORY_TAX}</p>
     <p style="margin-top:6px;">رقم السند: <b>{receipt_no}</b> | التاريخ: {today_r}</p>
-  </div>
-  <div class="hdr-right">
+      </div>
+      <div class="hdr-right">
     <div class="rcpt-badge">سند قبض</div>
     <div class="rcpt-badge-en">Payment Receipt</div>
     <img src="data:image/png;base64,{_qr_rcpt_b64}" style="width:80px;height:80px;border:2px solid #16a34a;border-radius:8px;" alt="QR">
     <p style="font-size:9px;color:#94a3b8;text-align:left;">امسح للتحقق</p>
-  </div>
-</div>
-<div class="amount-box">
-  <div><div class="lbl">المبلغ المستلم</div><div class="lbl-en">Amount Received</div></div>
-  <div class="amount">{pa4:,.2f} ريال</div>
-</div>
-<div class="info-grid">
-  <div class="ig"><div class="lbl">العميل / Customer</div><div class="val">{sc4}</div></div>
-  <div class="ig"><div class="lbl">رقم الطلبية / Order No.</div><div class="val">{so4}</div></div>
-  <div class="ig"><div class="lbl">طريقة الدفع / Payment Method</div><div class="val">{pt4}</div></div>
-  <div class="ig"><div class="lbl">البنك / رقم الحوالة</div><div class="val">{pb4 or '—'}</div></div>
-  <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
-  <div class="ig"><div class="lbl">رقم السند / Receipt No.</div><div class="val">{receipt_no}</div></div>
-</div>
-<div class="balance-box">
-  <h4>📊 ملخص حساب الطلبية / Order Balance Summary</h4>
-  <div class="b-row"><span>إجمالي قيمة العقد شامل الضريبة</span><span>{contract_val:,.2f} ر</span></div>
-  <div class="b-row"><span>الدفعة المقدمة</span><span>{adv_order:,.2f} ر</span></div>
-  <div class="b-row"><span>إجمالي الدفعات المستلمة (بما فيها هذه الدفعة)</span><span>{total_paid_so_far:,.2f} ر</span></div>
-  <div class="b-row"><span>🔴 الرصيد المتبقي</span><span style="color:#dc2626;">{remaining_after:,.2f} ر</span></div>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع المحاسب</div><div class="sig-lbl-en">Accountant Signature</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع العميل</div><div class="sig-lbl-en">Customer Signature</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">ختم الشركة</div><div class="sig-lbl-en">Company Stamp</div></div>
-</div>
-<div class="footer">
-  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-  <span>نظام ERP v7.0 | {today_r}</span>
-</div>
+      </div>
+    </div>
+    <div class="amount-box">
+      <div><div class="lbl">المبلغ المستلم</div><div class="lbl-en">Amount Received</div></div>
+      <div class="amount">{pa4:,.2f} ريال</div>
+    </div>
+    <div class="info-grid">
+      <div class="ig"><div class="lbl">العميل / Customer</div><div class="val">{sc4}</div></div>
+      <div class="ig"><div class="lbl">رقم الطلبية / Order No.</div><div class="val">{so4}</div></div>
+      <div class="ig"><div class="lbl">طريقة الدفع / Payment Method</div><div class="val">{pt4}</div></div>
+      <div class="ig"><div class="lbl">البنك / رقم الحوالة</div><div class="val">{pb4 or '—'}</div></div>
+      <div class="ig"><div class="lbl">التاريخ / Date</div><div class="val">{today_r}</div></div>
+      <div class="ig"><div class="lbl">رقم السند / Receipt No.</div><div class="val">{receipt_no}</div></div>
+    </div>
+    <div class="balance-box">
+      <h4>📊 ملخص حساب الطلبية / Order Balance Summary</h4>
+      <div class="b-row"><span>إجمالي قيمة العقد شامل الضريبة</span><span>{contract_val:,.2f} ر</span></div>
+      <div class="b-row"><span>الدفعة المقدمة</span><span>{adv_order:,.2f} ر</span></div>
+      <div class="b-row"><span>إجمالي الدفعات المستلمة (بما فيها هذه الدفعة)</span><span>{total_paid_so_far:,.2f} ر</span></div>
+      <div class="b-row"><span>🔴 الرصيد المتبقي</span><span style="color:#dc2626;">{remaining_after:,.2f} ر</span></div>
+    </div>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع المحاسب</div><div class="sig-lbl-en">Accountant Signature</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">توقيع العميل</div><div class="sig-lbl-en">Customer Signature</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-lbl-ar">ختم الشركة</div><div class="sig-lbl-en">Company Stamp</div></div>
+    </div>
+    <div class="footer">
+      <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
+      <span>نظام ERP v7.0 | {today_r}</span>
+    </div>
 
-</body></html>"""
+    </body></html>"""
                         st.session_state.receipt_html  = receipt_html
                         st.session_state.receipt_ready = True
                         st.session_state.rk += 1
@@ -4268,49 +4286,49 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                         </tr>"""
 
                     inv_report_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:12px;padding:24px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
-.s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
-.s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;color:#1e293b;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
-tbody tr:nth-child(even){{background:#f8fafc;}}
-tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-align:center;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:12px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
-  <div style="text-align:left;"><div class="badge">تقرير الفواتير</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds5} — {de5}</p><p style="color:#64748b;font-size:11px;">العميل: {filter_lbl}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_q}</p></div>
-</div>
-<div class="summary">
-  <div class="s-card"><div class="lbl">عدد الفواتير</div><div class="val">{len(ir)}</div></div>
-  <div class="s-card"><div class="lbl">إجمالي الفواتير</div><div class="val">{tot_grand:,.2f} ر</div></div>
-  <div class="s-card"><div class="lbl">الصافي المستحق</div><div class="val" style="color:#dc2626;">{tot_net:,.2f} ر</div></div>
-</div>
-<table>
-  <thead><tr>
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:12px;padding:24px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:18px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    .summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}}
+    .s-card{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .s-card .lbl{{font-size:10px;color:#94a3b8;}} .s-card .val{{font-size:15px;font-weight:700;color:#1e293b;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:9px 8px;text-align:center;}}
+    tbody tr:nth-child(even){{background:#f8fafc;}}
+    tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-align:center;}}
+    .footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:12px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:28px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>الرقم الضريبي: {FACTORY_TAX}</p></div>
+      <div style="text-align:left;"><div class="badge">تقرير الفواتير</div><p style="margin-top:8px;color:#64748b;font-size:11px;">الفترة: {ds5} — {de5}</p><p style="color:#64748b;font-size:11px;">العميل: {filter_lbl}</p><p style="color:#64748b;font-size:11px;">تاريخ الإصدار: {today_q}</p></div>
+    </div>
+    <div class="summary">
+      <div class="s-card"><div class="lbl">عدد الفواتير</div><div class="val">{len(ir)}</div></div>
+      <div class="s-card"><div class="lbl">إجمالي الفواتير</div><div class="val">{tot_grand:,.2f} ر</div></div>
+      <div class="s-card"><div class="lbl">الصافي المستحق</div><div class="val" style="color:#dc2626;">{tot_net:,.2f} ر</div></div>
+    </div>
+    <table>
+      <thead><tr>
     <th>رقم الفاتورة</th><th>التاريخ</th><th>العميل</th><th>الطلبية</th>
     <th>النوع/السعة</th><th>قبل الضريبة</th><th>ضريبة 15%</th><th>الإجمالي</th><th>الصافي المستحق</th>
-  </tr></thead>
-  <tbody>{rows_html}</tbody>
-  <tfoot><tr>
+      </tr></thead>
+      <tbody>{rows_html}</tbody>
+      <tfoot><tr>
     <td colspan="5">الإجماليات</td>
     <td>{float(ir['subtotal'].sum()):,.2f}</td>
     <td>{float(ir['vat'].sum()):,.2f}</td>
     <td>{tot_grand:,.2f}</td>
     <td>{tot_net:,.2f}</td>
-  </tr></tfoot>
-</table>
-<div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_q}</span></div>
-</body></html>"""
+      </tr></tfoot>
+    </table>
+    <div class="footer"><span>🏭 {FACTORY_NAME}</span><span>نظام ERP v7.0 — {today_q}</span></div>
+    </body></html>"""
 
                     col_q1, col_q2 = st.columns(2)
                     col_q1.download_button("⬇️ تنزيل CSV", df_to_csv(ir), "invoices.csv", "text/csv")
@@ -4442,7 +4460,7 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-ali
                         _css_match = _re.search(r'<style>(.*?)</style>', _all_pages[0], _re.DOTALL)
                         _css = _css_match.group(1) if _css_match else ""
                         _qr_reprint_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>{_css}</style></head><body>{_combined_body}</body></html>"""
+    <style>{_css}</style></head><body>{_combined_body}</body></html>"""
                         st.success(f"✅ تم توليد {_total_cards} بطاقة جاهزة للطباعة!")
                         _fname = f"QR_Reprint_{qr_ds}_{qr_de}.html"
                         st.download_button(
@@ -4453,10 +4471,13 @@ tfoot td{{background:#1E3A8A;color:#fff;font-weight:700;padding:9px 8px;text-ali
                             key="dl_qr_reprint")
                         st.caption("💡 افتح الملف في Chrome أو Safari ثم Ctrl+P للطباعة — كل بطاقة A4 مستقلة")
 
-# ==========================================
-# [6] العمال والأجور
-# ==========================================
-elif menu == "👷 العمال والأجور":
+    # ==========================================
+    # [6] العمال والأجور
+    # ==========================================
+
+
+@st.fragment
+def page_workers():
     st.subheader("👷 نظام الأجور والرواتب")
 
     # session state
@@ -4626,56 +4647,56 @@ elif menu == "👷 العمال والأجور":
                         _qr_adv = make_qr_b64(f"ADVANCE:{rcpt_no}|WORKER:{wrow['name']}|AMT:{adv_amt:.2f}|DATE:{today_str}", color=(30,58,138), module_size=6)
 
                         adv_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#d97706;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
-.badge-en{{background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid #d97706;direction:ltr;}}
-.qr-img{{width:65px;height:65px;border:2px solid #d97706;border-radius:6px;}}
-.amt-box{{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
-.amt-box .lbl{{font-size:12px;opacity:.85;}} .amt-box .val{{font-size:24px;font-weight:800;}}
-.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
-.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #d97706;}}
-.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
-.bal{{background:#fef3c7;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #fbbf24;}}
-.bal p{{font-size:12px;margin:3px 0;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
-.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
-.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{padding:12px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no}</b> | {today_str}</p></div>
-  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#d97706;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+    .badge-en{{background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid #d97706;direction:ltr;}}
+    .qr-img{{width:65px;height:65px;border:2px solid #d97706;border-radius:6px;}}
+    .amt-box{{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
+    .amt-box .lbl{{font-size:12px;opacity:.85;}} .amt-box .val{{font-size:24px;font-weight:800;}}
+    .grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
+    .ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #d97706;}}
+    .ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
+    .bal{{background:#fef3c7;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #fbbf24;}}
+    .bal p{{font-size:12px;margin:3px 0;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+    .sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
+    .sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
+    .footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+    @media print{{body{{padding:12px;max-width:100%;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no}</b> | {today_str}</p></div>
+      <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
     <div class="badge">إيصال سلفة</div><div class="badge-en">Advance Receipt</div>
     <img class="qr-img" src="data:image/png;base64,{_qr_adv}" alt="QR">
-  </div>
-</div>
-<div class="amt-box"><div><div class="lbl">مبلغ السلفة</div><div style="font-size:10px;opacity:.6">Amount Advanced</div></div><div class="val">{adv_amt:,.2f} ريال</div></div>
-<div class="grid2">
-  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{wrow['name']}</div></div>
-  <div class="ig"><div class="lbl">رقم الإقامة</div><div class="val">{wrow['iqama_id']}</div></div>
-  <div class="ig"><div class="lbl">التاريخ</div><div class="val">{today_str}</div></div>
-  <div class="ig"><div class="lbl">ملاحظات</div><div class="val">{adv_note or '—'}</div></div>
-</div>
-<div class="bal">
-  <p><b>الراتب الشهري:</b> {base_sal:,.2f} ريال</p>
-  <p><b>المستحق حتى اليوم ({days_worked} يوم):</b> {earned_today:,.2f} ريال</p>
-  <p><b>هذه السلفة:</b> {adv_amt:,.2f} ريال</p>
-  <p><b>الرصيد المتبقي بعد السلفة:</b> {max(0,remaining-adv_amt):,.2f} ريال</p>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div><div class="sig-en">Worker Signature</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str}</span></div>
-</body></html>"""
+      </div>
+    </div>
+    <div class="amt-box"><div><div class="lbl">مبلغ السلفة</div><div style="font-size:10px;opacity:.6">Amount Advanced</div></div><div class="val">{adv_amt:,.2f} ريال</div></div>
+    <div class="grid2">
+      <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{wrow['name']}</div></div>
+      <div class="ig"><div class="lbl">رقم الإقامة</div><div class="val">{wrow['iqama_id']}</div></div>
+      <div class="ig"><div class="lbl">التاريخ</div><div class="val">{today_str}</div></div>
+      <div class="ig"><div class="lbl">ملاحظات</div><div class="val">{adv_note or '—'}</div></div>
+    </div>
+    <div class="bal">
+      <p><b>الراتب الشهري:</b> {base_sal:,.2f} ريال</p>
+      <p><b>المستحق حتى اليوم ({days_worked} يوم):</b> {earned_today:,.2f} ريال</p>
+      <p><b>هذه السلفة:</b> {adv_amt:,.2f} ريال</p>
+      <p><b>الرصيد المتبقي بعد السلفة:</b> {max(0,remaining-adv_amt):,.2f} ريال</p>
+    </div>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div><div class="sig-en">Worker Signature</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div><div class="sig-en">Accountant</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div><div class="sig-en">Stamp</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str}</span></div>
+    </body></html>"""
                         st.session_state.adv_rcpt  = adv_html
                         st.session_state.adv_ready = True
                         st.success(f"✅ سلفة {adv_amt:,.2f} ريال للعامل {wrow['name']}")
@@ -5077,10 +5098,10 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                 style = "font-weight:800;background:#f0fdf4;color:#16a34a;" if is_total else ""
                 rows_html_sal += f'<tr style="{style}"><td style="text-align:right;padding:8px 14px;border-bottom:1px solid #e2e8f0;">{row["البيان"]}</td><td style="text-align:center;padding:8px 14px;border-bottom:1px solid #e2e8f0;font-weight:700;font-family:monospace;">{val:,.2f} ر</td></tr>'
             st.markdown(f"""<div dir="rtl"><table style="width:100%;border-collapse:collapse;font-family:Cairo,sans-serif;font-size:14px;">
-<thead><tr style="background:#1E3A8A;color:#fff;">
-<th style="text-align:right;padding:10px 14px;">البيان</th>
-<th style="text-align:center;padding:10px 14px;">المبلغ (ريال)</th>
-</tr></thead><tbody>{rows_html_sal}</tbody></table></div>""", unsafe_allow_html=True)
+    <thead><tr style="background:#1E3A8A;color:#fff;">
+    <th style="text-align:right;padding:10px 14px;">البيان</th>
+    <th style="text-align:center;padding:10px 14px;">المبلغ (ريال)</th>
+    </tr></thead><tbody>{rows_html_sal}</tbody></table></div>""", unsafe_allow_html=True)
             st.markdown("")
 
             if net_sal3 <= 0.5:
@@ -5116,58 +5137,58 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                         rcpt_no3   = f"SAL-{wid2}-{today3.strftime('%Y%m%d')}"
                         _qr_sal = make_qr_b64(f"SALARY:{rcpt_no3}|WORKER:{ws3}|NET:{net_sal3:.2f}|DATE:{today_str3}", color=(22,163,74), module_size=6)
                         sal_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#16a34a;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
-.qr-img{{width:65px;height:65px;border:2px solid #16a34a;border-radius:6px;}}
-.amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
-.amt-box .val{{font-size:24px;font-weight:800;}}
-.grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
-.ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #16a34a;}}
-.ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
-.breakdown{{background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #86efac;}}
-.breakdown p{{font-size:12px;margin:3px 0;}}
-.sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
-.sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
-.sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
-.footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{padding:12px;max-width:100%;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no3}</b> | {today_str3}</p></div>
-  <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;padding:28px;max-width:700px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #16a34a;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:17px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#16a34a;color:#fff;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;}}
+    .qr-img{{width:65px;height:65px;border:2px solid #16a34a;border-radius:6px;}}
+    .amt-box{{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:12px 0;}}
+    .amt-box .val{{font-size:24px;font-weight:800;}}
+    .grid2{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}}
+    .ig{{background:#f8fafc;border-radius:7px;padding:9px;border-right:3px solid #16a34a;}}
+    .ig .lbl{{font-size:9px;color:#94a3b8;margin-bottom:2px;}} .ig .val{{font-size:12px;font-weight:700;}}
+    .breakdown{{background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;border:1px solid #86efac;}}
+    .breakdown p{{font-size:12px;margin:3px 0;}}
+    .sig-area{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+    .sig-box{{text-align:center;flex:1;}} .sig-line{{border-top:2px solid #1e293b;margin-bottom:5px;height:30px;}}
+    .sig-ar{{font-size:11px;font-weight:700;}} .sig-en{{font-size:9px;color:#64748b;}}
+    .footer{{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+    @media print{{body{{padding:12px;max-width:100%;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><div style="font-size:24px;">🏭</div><h1>{FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>رقم الإيصال: <b>{rcpt_no3}</b> | {today_str3}</p></div>
+      <div style="text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
     <div class="badge">إيصال راتب</div>
     <img class="qr-img" src="data:image/png;base64,{{_qr_sal}}" alt="QR">
-  </div>
-</div>
-<div class="amt-box"><div><div style="font-size:12px;opacity:.85;">صافي الراتب المستحق</div></div><div class="val">{net_sal3:,.2f} ريال</div></div>
-<div class="grid2">
-  <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{ws3}</div></div>
-  <div class="ig"><div class="lbl">تاريخ الالتحاق</div><div class="val">{start_date3}</div></div>
-  <div class="ig"><div class="lbl">الشهر</div><div class="val">{month_str3}</div></div>
-  <div class="ig"><div class="lbl">تاريخ الصرف</div><div class="val">{today_str3}</div></div>
-</div>
-<div class="breakdown">
-  <p><b>الراتب الأساسي:</b> {base3:,.2f} ريال (يومي: {daily_rate:,.2f} ريال)</p>
-  <p><b>أيام من تاريخ الالتحاق:</b> {days_since_join} يوم</p>
-  <p><b>غياب بدون عذر:</b> {absent_no_exc} يوم (خصم: {absent_no_exc*daily_rate:,.2f} ريال)</p>
-  <p><b>أيام مستحقة:</b> {paid_days} يوم = {earned3:,.2f} ريال</p>
-  <p><b>السلف المخصومة:</b> {adv_total3:,.2f} ريال</p>
-  <p><b>خصومات أخرى:</b> {ded_total3:,.2f} ريال</p>
-  <p style="border-top:1px solid #86efac;padding-top:6px;margin-top:6px;"><b>✅ الصافي المدفوع:</b> {net_sal3:,.2f} ريال</p>
-</div>
-<div class="sig-area">
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div></div>
-  <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str3}</span></div>
-</body></html>"""
+      </div>
+    </div>
+    <div class="amt-box"><div><div style="font-size:12px;opacity:.85;">صافي الراتب المستحق</div></div><div class="val">{net_sal3:,.2f} ريال</div></div>
+    <div class="grid2">
+      <div class="ig"><div class="lbl">اسم العامل</div><div class="val">{ws3}</div></div>
+      <div class="ig"><div class="lbl">تاريخ الالتحاق</div><div class="val">{start_date3}</div></div>
+      <div class="ig"><div class="lbl">الشهر</div><div class="val">{month_str3}</div></div>
+      <div class="ig"><div class="lbl">تاريخ الصرف</div><div class="val">{today_str3}</div></div>
+    </div>
+    <div class="breakdown">
+      <p><b>الراتب الأساسي:</b> {base3:,.2f} ريال (يومي: {daily_rate:,.2f} ريال)</p>
+      <p><b>أيام من تاريخ الالتحاق:</b> {days_since_join} يوم</p>
+      <p><b>غياب بدون عذر:</b> {absent_no_exc} يوم (خصم: {absent_no_exc*daily_rate:,.2f} ريال)</p>
+      <p><b>أيام مستحقة:</b> {paid_days} يوم = {earned3:,.2f} ريال</p>
+      <p><b>السلف المخصومة:</b> {adv_total3:,.2f} ريال</p>
+      <p><b>خصومات أخرى:</b> {ded_total3:,.2f} ريال</p>
+      <p style="border-top:1px solid #86efac;padding-top:6px;margin-top:6px;"><b>✅ الصافي المدفوع:</b> {net_sal3:,.2f} ريال</p>
+    </div>
+    <div class="sig-area">
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع العامل</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">توقيع المحاسب</div></div>
+      <div class="sig-box"><div class="sig-line"></div><div class="sig-ar">ختم الشركة</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_str3}</span></div>
+    </body></html>"""
                         sal_html = sal_html.replace("{_qr_sal}", _qr_sal)
                         st.session_state.sal_rcpt  = sal_html
                         st.session_state.sal_ready = True
@@ -5294,54 +5315,54 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
             if st.button("🖨️ طباعة كشف الرواتب HTML", key="pr_print_btn"):
                 today_pr_str = today_pr.strftime("%Y/%m/%d")
                 pr_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:20px;font-size:11px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}}
-.sum-box{{background:#f8fafc;border-radius:8px;padding:10px;border-right:4px solid #1E3A8A;text-align:center;}}
-.sum-box .lbl{{font-size:10px;color:#64748b;}} .sum-box .val{{font-size:16px;font-weight:800;color:#1E3A8A;}}
-table{{width:100%;border-collapse:collapse;}}
-th{{background:#1E3A8A;color:#fff;padding:8px 6px;text-align:center;font-size:11px;}}
-td{{padding:7px 6px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:11px;}}
-tr:nth-child(even){{background:#f8fafc;}}
-.total-row{{background:#dbeafe;font-weight:800;font-size:12px;}}
-.sig{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
-.sb{{text-align:center;flex:1;}} .sl{{border-top:2px solid #1e293b;height:30px;margin-bottom:5px;}}
-.footer{{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
-@media print{{body{{padding:8px;font-size:10px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>كشف الرواتب الشهري</p></div>
-  <div style="text-align:center"><div style="background:#1E3A8A;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;">{today_pr.strftime("%Y-%m")}</div><p style="font-size:10px;color:#64748b;margin-top:5px;">طُبع: {today_pr_str}</p></div>
-</div>
-<div class="summary">
-  <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{total_base:,.2f} ر</div></div>
-  <div class="sum-box"><div class="lbl">إجمالي المستحق (شهر + مرحّل)</div><div class="val">{total_grand_due:,.2f} ر<br><small style="font-size:10px;color:#2563eb">منه مرحّل: {total_carried:,.2f} ر</small></div></div>
-  <div class="sum-box"><div class="lbl">سلف + خصومات + مدفوع</div><div class="val" style="color:#dc2626">{total_deducted:,.2f} ر<br><small style="font-size:10px">سلف: {total_adv:,.2f} | خصم: {total_ded:,.2f} | مدفوع: {total_paid:,.2f}</small></div></div>
-  <div class="sum-box" style="border-color:#16a34a"><div class="lbl">✅ صافي مستحق لكل العمال</div><div class="val" style="color:#16a34a;font-size:20px">{total_net:,.2f} ر</div></div>
-</div>
-<table>
-<thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
-<tbody>{pr_rows_html}
-<tr class="total-row"><td colspan="3">الإجمالي</td>
-<td>{total_base:,.2f}</td><td>—</td><td>{int(pr_df["غياب بدون عذر"].sum())}</td>
-<td>{total_earned:,.2f}</td><td style="color:#2563eb">{total_carried:,.2f}</td>
-<td style="color:#dc2626">{pr_df["سلف معلقة"].sum():,.2f}</td>
-<td style="color:#dc2626">{pr_df["خصومات"].sum():,.2f}</td>
-<td>{pr_df["مدفوع هذا الشهر"].sum():,.2f}</td>
-<td style="color:#16a34a;font-size:13px">{total_net:,.2f}</td>
-</tr></tbody></table>
-<div class="sig">
-  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">مدير الموارد البشرية</div></div>
-  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير المالي</div></div>
-  <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير العام</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_pr_str}</span></div>
-</body></html>"""
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:20px;font-size:11px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:16px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}} .hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}}
+    .sum-box{{background:#f8fafc;border-radius:8px;padding:10px;border-right:4px solid #1E3A8A;text-align:center;}}
+    .sum-box .lbl{{font-size:10px;color:#64748b;}} .sum-box .val{{font-size:16px;font-weight:800;color:#1E3A8A;}}
+    table{{width:100%;border-collapse:collapse;}}
+    th{{background:#1E3A8A;color:#fff;padding:8px 6px;text-align:center;font-size:11px;}}
+    td{{padding:7px 6px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:11px;}}
+    tr:nth-child(even){{background:#f8fafc;}}
+    .total-row{{background:#dbeafe;font-weight:800;font-size:12px;}}
+    .sig{{display:flex;justify-content:space-around;margin-top:28px;gap:12px;}}
+    .sb{{text-align:center;flex:1;}} .sl{{border-top:2px solid #1e293b;height:30px;margin-bottom:5px;}}
+    .footer{{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}}
+    @media print{{body{{padding:8px;font-size:10px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>كشف الرواتب الشهري</p></div>
+      <div style="text-align:center"><div style="background:#1E3A8A;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;">{today_pr.strftime("%Y-%m")}</div><p style="font-size:10px;color:#64748b;margin-top:5px;">طُبع: {today_pr_str}</p></div>
+    </div>
+    <div class="summary">
+      <div class="sum-box"><div class="lbl">إجمالي الرواتب الأساسية</div><div class="val">{total_base:,.2f} ر</div></div>
+      <div class="sum-box"><div class="lbl">إجمالي المستحق (شهر + مرحّل)</div><div class="val">{total_grand_due:,.2f} ر<br><small style="font-size:10px;color:#2563eb">منه مرحّل: {total_carried:,.2f} ر</small></div></div>
+      <div class="sum-box"><div class="lbl">سلف + خصومات + مدفوع</div><div class="val" style="color:#dc2626">{total_deducted:,.2f} ر<br><small style="font-size:10px">سلف: {total_adv:,.2f} | خصم: {total_ded:,.2f} | مدفوع: {total_paid:,.2f}</small></div></div>
+      <div class="sum-box" style="border-color:#16a34a"><div class="lbl">✅ صافي مستحق لكل العمال</div><div class="val" style="color:#16a34a;font-size:20px">{total_net:,.2f} ر</div></div>
+    </div>
+    <table>
+    <thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>أيام</th><th>غياب</th><th>مستحق الشهر</th><th>مرحّل</th><th>سلف</th><th>خصومات</th><th>مدفوع</th><th>الصافي</th></tr></thead>
+    <tbody>{pr_rows_html}
+    <tr class="total-row"><td colspan="3">الإجمالي</td>
+    <td>{total_base:,.2f}</td><td>—</td><td>{int(pr_df["غياب بدون عذر"].sum())}</td>
+    <td>{total_earned:,.2f}</td><td style="color:#2563eb">{total_carried:,.2f}</td>
+    <td style="color:#dc2626">{pr_df["سلف معلقة"].sum():,.2f}</td>
+    <td style="color:#dc2626">{pr_df["خصومات"].sum():,.2f}</td>
+    <td>{pr_df["مدفوع هذا الشهر"].sum():,.2f}</td>
+    <td style="color:#16a34a;font-size:13px">{total_net:,.2f}</td>
+    </tr></tbody></table>
+    <div class="sig">
+      <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">مدير الموارد البشرية</div></div>
+      <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير المالي</div></div>
+      <div class="sb"><div class="sl"></div><div style="font-size:11px;font-weight:700;">المدير العام</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_pr_str}</span></div>
+    </body></html>"""
                 st.download_button("⬇️ تنزيل كشف الرواتب HTML",
                     pr_html.encode("utf-8"),
                     f"Payroll_{today_pr.strftime('%Y-%m')}.html",
@@ -5375,34 +5396,34 @@ tr:nth-child(even){{background:#f8fafc;}}
                           <td class="center">{float(r["base_salary"]):,.2f} ريال</td>
                         </tr>"""
                     workers_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;}}
-th{{background:#1E3A8A;color:#fff;padding:11px 12px;text-align:center;font-size:13px;}}
-td{{padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
-td.center{{text-align:center;}}
-tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
-.total-row{{background:#dbeafe;font-weight:800;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:10px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>سجل العمال الرسمي</p></div>
-  <div><div class="badge">إجمالي العمال: {len(wdf4)}</div><p style="text-align:center;margin-top:6px;font-size:11px;color:#64748b;">تاريخ الطباعة: {today_wr}</p></div>
-</div>
-<table>
-<thead><tr><th>#</th><th>الاسم الكامل</th><th>رقم الإقامة</th><th>المسمى الوظيفي</th><th>تاريخ الالتحاق</th><th>الراتب الأساسي</th></tr></thead>
-<tbody>{wrows_html}
-<tr class="total-row"><td colspan="5" class="center">الإجمالي</td><td class="center">{float(wdf4["base_salary"].sum()):,.2f} ريال</td></tr>
-</tbody></table>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_wr}</span></div>
-</body></html>"""
+    <html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+    @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+    *{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:"Cairo",sans-serif;background:#fff;color:#1e293b;padding:28px;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;}}
+    th{{background:#1E3A8A;color:#fff;padding:11px 12px;text-align:center;font-size:13px;}}
+    td{{padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
+    td.center{{text-align:center;}}
+    tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
+    .total-row{{background:#dbeafe;font-weight:800;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:10px;}}}}
+    </style></head><body>
+    <div class="hdr">
+      <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>سجل العمال الرسمي</p></div>
+      <div><div class="badge">إجمالي العمال: {len(wdf4)}</div><p style="text-align:center;margin-top:6px;font-size:11px;color:#64748b;">تاريخ الطباعة: {today_wr}</p></div>
+    </div>
+    <table>
+    <thead><tr><th>#</th><th>الاسم الكامل</th><th>رقم الإقامة</th><th>المسمى الوظيفي</th><th>تاريخ الالتحاق</th><th>الراتب الأساسي</th></tr></thead>
+    <tbody>{wrows_html}
+    <tr class="total-row"><td colspan="5" class="center">الإجمالي</td><td class="center">{float(wdf4["base_salary"].sum()):,.2f} ريال</td></tr>
+    </tbody></table>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_wr}</span></div>
+    </body></html>"""
                     st.download_button("⬇️ تنزيل سجل العمال HTML",
                         workers_html.encode("utf-8"),
                         f"Workers_Register_{today_wr.replace('/','_')}.html",
@@ -5440,10 +5461,13 @@ tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
                 st.dataframe(att_hist.rename(columns={'att_date':'التاريخ','status':'الحالة','excuse_type':'العذر'}) if not att_hist.empty else pd.DataFrame({"الحالة":["لا يوجد"]}), use_container_width=True, hide_index=True)
 
 
-# ==========================================
-# [7] النظام المحاسبي
-# ==========================================
-elif menu == "📈 النظام المحاسبي":
+    # ==========================================
+    # [7] النظام المحاسبي
+    # ==========================================
+
+
+@st.fragment
+def page_accounting():
     st.subheader("📈 النظام المحاسبي — التقارير المالية")
     c1,c2 = st.columns(2)
     ds_a = c1.date_input("من:", datetime.date.today()-datetime.timedelta(days=365), key="ads")
@@ -5538,29 +5562,29 @@ elif menu == "📈 النظام المحاسبي":
           <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;{'font-weight:700;font-size:15px;' if r[2]=='صافي' else ''}{'color:#16a34a;' if r[2]=='صافي' and net_inc>=0 else 'color:#dc2626;' if r[2]=='صافي' and net_inc<0 else ''}">{f"{r[1]:,.2f} ر" if r[1]!="" else ""}</td>
         </tr>""" for r in income_rows)
         _inc_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
-.badge{{background:#1E3A8A;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}
-thead th:last-child{{text-align:left;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
-.sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
-.sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:15px;font-weight:700;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}</style></head><body>
-<div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-<div style="text-align:left"><div class="badge">قائمة الدخل</div><p style="color:#64748b;font-size:10px;margin-top:6px">من {ds_a} إلى {de_a}</p></div></div>
-<table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_inc_rows_html}</tbody></table>
-<div class="summary">
-  <div class="sc"><div class="lbl">إجمالي المبيعات</div><div class="val">{sales_tot:,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">تكلفة البضاعة</div><div class="val">{cogs:,.2f} ر</div></div>
-  <div class="sc" style="border-top-color:{'#16a34a' if net_inc>=0 else '#dc2626'}"><div class="lbl">صافي الربح</div><div class="val" style="color:{'#16a34a' if net_inc>=0 else '#dc2626'}">{net_inc:,.2f} ر</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
-</body></html>"""
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.hdr p{{color:#64748b;font-size:11px;margin:2px 0;}}
+    .badge{{background:#1E3A8A;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}
+    thead th:last-child{{text-align:left;}}
+    .summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
+    .sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:15px;font-weight:700;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}</style></head><body>
+    <div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+    <div style="text-align:left"><div class="badge">قائمة الدخل</div><p style="color:#64748b;font-size:10px;margin-top:6px">من {ds_a} إلى {de_a}</p></div></div>
+    <table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_inc_rows_html}</tbody></table>
+    <div class="summary">
+      <div class="sc"><div class="lbl">إجمالي المبيعات</div><div class="val">{sales_tot:,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">تكلفة البضاعة</div><div class="val">{cogs:,.2f} ر</div></div>
+      <div class="sc" style="border-top-color:{'#16a34a' if net_inc>=0 else '#dc2626'}"><div class="lbl">صافي الربح</div><div class="val" style="color:{'#16a34a' if net_inc>=0 else '#dc2626'}">{net_inc:,.2f} ر</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
+    </body></html>"""
         st.download_button("🖨️ طباعة قائمة الدخل (HTML)", _inc_html.encode('utf-8'),
             f"income_statement_{de_a}.html", "text/html; charset=utf-8", key="dl_inc_html")
         st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
@@ -5611,27 +5635,27 @@ thead th:last-child{{text-align:left;}}
           <td style="padding:9px 14px;border-bottom:1px solid #e2e8f0;text-align:left;font-family:monospace;{'font-weight:700;' if r[2]=='نتيجة' else ''}{'color:#16a34a;' if r[2]=='نتيجة' and r[1]>=0 else 'color:#dc2626;' if r[2]=='نتيجة' and isinstance(r[1],float) and r[1]<0 else ''}">{f"{r[1]:,.2f} ر" if r[1]!="" else ""}</td>
         </tr>""" for r in cf_rows)
         _cf_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.badge{{background:#2563eb;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}thead th:last-child{{text-align:left;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
-.sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
-.sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:14px;font-weight:700;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}</style></head><body>
-<div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-<div style="text-align:left"><div class="badge">قائمة التدفق النقدي</div><p style="color:#64748b;font-size:10px;margin-top:6px">من {ds_a} إلى {de_a}</p></div></div>
-<table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_cf_rows_html}</tbody></table>
-<div class="summary">
-  <div class="sc"><div class="lbl">التدفق التشغيلي</div><div class="val" style="color:{'#16a34a' if op_cf>=0 else '#dc2626'}">{op_cf:,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">التدفق الاستثماري</div><div class="val" style="color:{'#16a34a' if inv_cf>=0 else '#dc2626'}">{inv_cf:,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">صافي التدفق الكلي</div><div class="val" style="color:{'#16a34a' if net_cf>=0 else '#dc2626'}">{net_cf:,.2f} ر</div></div>
-</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
-</body></html>"""
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.badge{{background:#2563eb;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}thead th:last-child{{text-align:left;}}
+    .summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
+    .sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:14px;font-weight:700;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}</style></head><body>
+    <div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+    <div style="text-align:left"><div class="badge">قائمة التدفق النقدي</div><p style="color:#64748b;font-size:10px;margin-top:6px">من {ds_a} إلى {de_a}</p></div></div>
+    <table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_cf_rows_html}</tbody></table>
+    <div class="summary">
+      <div class="sc"><div class="lbl">التدفق التشغيلي</div><div class="val" style="color:{'#16a34a' if op_cf>=0 else '#dc2626'}">{op_cf:,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">التدفق الاستثماري</div><div class="val" style="color:{'#16a34a' if inv_cf>=0 else '#dc2626'}">{inv_cf:,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">صافي التدفق الكلي</div><div class="val" style="color:{'#16a34a' if net_cf>=0 else '#dc2626'}">{net_cf:,.2f} ر</div></div>
+    </div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
+    </body></html>"""
         st.download_button("🖨️ طباعة التدفق النقدي (HTML)", _cf_html.encode('utf-8'),
             f"cashflow_{de_a}.html", "text/html; charset=utf-8", key="dl_cf_html")
         st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
@@ -5670,37 +5694,40 @@ thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}the
         </tr>""" for r in bal_rows)
         _check = "✅ الميزانية متوازنة" if abs(total_assets-(total_liab+equity))<1 else "⚠️ تحقق من الأرقام"
         _bal_html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.badge{{background:#7c3aed;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
-table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
-thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}thead th:last-child{{text-align:left;}}
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
-.sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
-.sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:14px;font-weight:700;}}
-.check{{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;text-align:center;font-weight:700;color:#16a34a;margin-top:10px;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:15px;}}}}</style></head><body>
-<div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
-<div style="text-align:left"><div class="badge">الميزانية العمومية</div><p style="color:#64748b;font-size:10px;margin-top:6px">بتاريخ {today_acc}</p></div></div>
-<table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_bal_rows_html}</tbody></table>
-<div class="summary">
-  <div class="sc"><div class="lbl">إجمالي الأصول</div><div class="val">{total_assets:,.2f} ر</div></div>
-  <div class="sc"><div class="lbl">إجمالي الخصوم</div><div class="val">{total_liab:,.2f} ر</div></div>
-  <div class="sc" style="border-top-color:#7c3aed"><div class="lbl">حقوق الملكية</div><div class="val" style="color:#7c3aed">{equity:,.2f} ر</div></div>
-</div>
-<div class="check">{_check} — الأصول = الخصوم + حقوق الملكية</div>
-<div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
-</body></html>"""
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+    *{{box-sizing:border-box;margin:0;padding:0;}}body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b;padding:30px;max-width:800px;margin:0 auto;}}
+    .hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:12px;margin-bottom:20px;}}
+    .hdr h1{{color:#1E3A8A;font-size:18px;font-weight:800;}}.badge{{background:#7c3aed;color:#fff;padding:5px 16px;border-radius:20px;font-size:13px;font-weight:700;}}
+    table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+    thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}thead th:last-child{{text-align:left;}}
+    .summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}}
+    .sc{{background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;border-top:3px solid #1E3A8A;}}
+    .sc .lbl{{font-size:10px;color:#94a3b8;}}.sc .val{{font-size:14px;font-weight:700;}}
+    .check{{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;text-align:center;font-weight:700;color:#16a34a;margin-top:10px;}}
+    .footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
+    @media print{{body{{padding:15px;}}}}</style></head><body>
+    <div class="hdr"><div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p></div>
+    <div style="text-align:left"><div class="badge">الميزانية العمومية</div><p style="color:#64748b;font-size:10px;margin-top:6px">بتاريخ {today_acc}</p></div></div>
+    <table><thead><tr><th>البيان</th><th>المبلغ (ريال)</th></tr></thead><tbody>{_bal_rows_html}</tbody></table>
+    <div class="summary">
+      <div class="sc"><div class="lbl">إجمالي الأصول</div><div class="val">{total_assets:,.2f} ر</div></div>
+      <div class="sc"><div class="lbl">إجمالي الخصوم</div><div class="val">{total_liab:,.2f} ر</div></div>
+      <div class="sc" style="border-top-color:#7c3aed"><div class="lbl">حقوق الملكية</div><div class="val" style="color:#7c3aed">{equity:,.2f} ر</div></div>
+    </div>
+    <div class="check">{_check} — الأصول = الخصوم + حقوق الملكية</div>
+    <div class="footer"><span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span><span>نظام ERP v7.0 | {today_acc}</span></div>
+    </body></html>"""
         st.download_button("🖨️ طباعة الميزانية العمومية (HTML)", _bal_html.encode('utf-8'),
             f"balance_sheet_{today_acc.replace('/','')}.html", "text/html; charset=utf-8", key="dl_bal_html")
         st.caption("💡 افتح في Chrome أو Safari ثم Ctrl+P")
 
-# ==========================================
-# [8] الاستعلام المتقدم
-# ==========================================
-elif menu == "🔍 الاستعلام المتقدم":
+    # ==========================================
+    # [8] الاستعلام المتقدم
+    # ==========================================
+
+
+@st.fragment
+def page_search():
     st.subheader("🔍 مركز الاستعلام")
     qt = st.selectbox("نوع الاستعلام:", ["عميل","طلبية","مورد","خزان بالرقم المسلسل","فاتورة"])
     # جلب البيانات بس لما تحتاجها
@@ -5737,10 +5764,13 @@ elif menu == "🔍 الاستعلام المتقدم":
             st.dataframe(df if not df.empty else pd.DataFrame({"النتيجة":["لا يوجد"]}),use_container_width=True)
             if not df.empty: st.download_button("⬇️ تنزيل",df_to_csv(df),f"inv_{iid}.csv","text/csv")
 
-# ==========================================
-# [9] حذف كامل
-# ==========================================
-elif menu == "🗑️ حذف كامل للبيانات":
+    # ==========================================
+    # [9] حذف كامل
+    # ==========================================
+
+
+@st.fragment
+def page_delete():
     st.subheader("🗑️ حذف كامل")
     st.error("⚠️ تحذير شديد: هذه العملية تحذف جميع البيانات نهائياً!")
     cf = st.radio("هل أنت متأكد؟", ["لا، إلغاء","نعم، أريد الحذف الكامل"])
@@ -5758,3 +5788,35 @@ elif menu == "🗑️ حذف كامل للبيانات":
             st.rerun()
     else:
         st.info("✅ العملية ملغاة.")
+
+
+# ==========================================
+# تشغيل القسم المحدد
+# ==========================================
+
+if menu == "📊 لوحة التحكم":
+    page_dashboard()
+
+if menu == "📦 الطلبيات":
+    page_orders()
+
+if menu == "🏭 التصنيع":
+    page_production()
+
+if menu == "📥 المشتريات والمخزن":
+    page_inventory()
+
+if menu == "💰 الشحن والفواتير":
+    page_shipping()
+
+if menu == "👷 العمال والأجور":
+    page_workers()
+
+if menu == "📈 النظام المحاسبي":
+    page_accounting()
+
+if menu == "🔍 الاستعلام المتقدم":
+    page_search()
+
+if menu == "🗑️ حذف كامل للبيانات":
+    page_delete()
