@@ -204,14 +204,23 @@ except Exception as e:
     st.error(f"خطأ في الاتصال: {e}")
     st.stop()
 
-@st.cache_data(ttl=30)
 def run_query(query, params=None):
-    """cache 5 دقائق — يقلل الضغط على DB بشكل كبير"""
+    # كاش في session_state لتجنب إعادة الاستعلام في نفس الـ rerun
+    import hashlib, json
     try:
-        return conn.query(query, params=params, ttl=300)
+        key = "q_" + hashlib.md5((query + json.dumps(str(params), ensure_ascii=False)).encode()).hexdigest()[:12]
+        if key not in st.session_state:
+            st.session_state[key] = conn.query(query, params=params, ttl=600)
+        return st.session_state[key]
     except Exception as e:
         st.error(f"خطأ: {e}")
         return pd.DataFrame()
+
+def clear_query_cache():
+    """امسح كاش الـ queries — استخدمها بعد أي write"""
+    keys = [k for k in st.session_state if k.startswith("q_")]
+    for k in keys:
+        del st.session_state[k]
 
 def run_write(query, params=None):
     try:
@@ -219,7 +228,7 @@ def run_write(query, params=None):
             s.execute(text(query), params or {})
             s.commit()
         # مسح الكاش بعد أي كتابة عشان البيانات تتحدث
-        run_query.clear()
+        clear_query_cache()
         return True
     except Exception as e:
         st.error(f"خطأ: {e}")
@@ -5694,9 +5703,10 @@ thead th{{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:right;}}the
 elif menu == "🔍 الاستعلام المتقدم":
     st.subheader("🔍 مركز الاستعلام")
     qt = st.selectbox("نوع الاستعلام:", ["عميل","طلبية","مورد","خزان بالرقم المسلسل","فاتورة"])
-    cdf6 = run_query("SELECT id,trade_name FROM customers ORDER BY trade_name")
-    sdf4 = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name")
-    odf5 = run_query("SELECT order_id FROM orders ORDER BY order_date DESC")
+    # جلب البيانات بس لما تحتاجها
+    cdf6 = run_query("SELECT id,trade_name FROM customers ORDER BY trade_name") if qt in ["عميل"] else pd.DataFrame()
+    sdf4 = run_query("SELECT id,original_name FROM suppliers ORDER BY original_name") if qt in ["مورد"] else pd.DataFrame()
+    odf5 = run_query("SELECT order_id FROM orders ORDER BY order_date DESC") if qt in ["طلبية"] else pd.DataFrame()
     if qt=="عميل":
         sc6 = st.selectbox("العميل:", ["الكل"]+(cdf6['trade_name'].tolist() if not cdf6.empty else []))
         if st.button("🔍 بحث"):
