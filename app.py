@@ -4813,7 +4813,60 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                 {"s": att_from, "e": att_to})
 
             if not att_rep.empty:
-                st.dataframe(att_rep, use_container_width=True, hide_index=True)
+                # ── جدول ملخص الحضور ──
+                st.markdown("##### 📊 ملخص الحضور والغياب")
+                st.dataframe(att_rep.rename(columns={
+                    "name":"اسم العامل",
+                    "حضور":"حاضر",
+                    "غياب_بدون_عذر":"غياب بدون عذر",
+                    "غياب_بعذر":"غياب بعذر",
+                    "إجازة":"إجازة",
+                    "مأمورية":"مأمورية",
+                    "إجمالي_مسجل":"إجمالي مسجل"
+                }), use_container_width=True, hide_index=True)
+
+                # ── جدول تفاصيل أيام الغياب ──
+                abs_details = run_query("""
+                    SELECT w.name as العامل, a.att_date as التاريخ,
+                           COALESCE(NULLIF(a.excuse_type,''),'بدون عذر') as نوع_الغياب
+                    FROM worker_attendance a
+                    JOIN workers w ON a.worker_id = w.id
+                    WHERE a.status='غائب'
+                      AND a.att_date BETWEEN :s AND :e
+                    ORDER BY w.name, a.att_date
+                """, {"s": att_from, "e": att_to})
+
+                if not abs_details.empty:
+                    st.markdown("---")
+                    st.markdown("##### 📅 تفاصيل أيام الغياب")
+                    rows_abs = ""
+                    for i, (_, r) in enumerate(abs_details.iterrows()):
+                        row_bg = "#fff5f5" if r["نوع_الغياب"] == "بدون عذر" else "#fffbeb"
+                        text_color = "#dc2626" if r["نوع_الغياب"] == "بدون عذر" else "#d97706"
+                        icon = "🔴" if r["نوع_الغياب"] == "بدون عذر" else "🟡"
+                        td = "padding:9px 14px;border-bottom:1px solid #e2e8f0;color:#1a1a1a;"
+                        rows_abs += (
+                            '<tr style="background:' + row_bg + ';">'
+                            + '<td style="' + td + 'font-weight:700;">' + str(r["العامل"]) + '</td>'
+                            + '<td style="' + td + 'text-align:center;font-family:monospace;">' + str(r["التاريخ"]) + '</td>'
+                            + '<td style="' + td + 'text-align:center;color:' + text_color + ';font-weight:700;">' + icon + ' ' + str(r["نوع_الغياب"]) + '</td>'
+                            + '</tr>'
+                        )
+                    th = "padding:10px 14px;white-space:nowrap;border:none;text-align:right;"
+                    abs_html = (
+                        '<div style="direction:rtl;width:100%;overflow-x:auto;margin-bottom:16px;">'
+                        + '<table style="width:100%;border-collapse:collapse;font-family:Cairo,sans-serif;font-size:14px;direction:rtl;">'
+                        + '<thead><tr style="background:#991b1b;color:white;">'
+                        + '<th style="' + th + '">اسم العامل</th>'
+                        + '<th style="' + th + 'text-align:center;">تاريخ الغياب</th>'
+                        + '<th style="' + th + 'text-align:center;">نوع الغياب</th>'
+                        + '</tr></thead>'
+                        + '<tbody>' + rows_abs + '</tbody>'
+                        + '</table></div>'
+                    )
+                    st.markdown(abs_html, unsafe_allow_html=True)
+                else:
+                    st.success("✅ لا توجد أيام غياب في هذه الفترة")
                 if st.button("🖨️ طباعة تقرير الحضور (HTML)", key="att_print_btn"):
                     today_rpt = datetime.date.today().strftime("%Y/%m/%d")
                     rows_html = ""
