@@ -4883,60 +4883,89 @@ body{{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1e293b
                           <td class="center">{total}</td>
                           <td class="center"><span class="pct">{pct}%</span></td>
                         </tr>"""
-                    att_html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Cairo',sans-serif;background:#fff;color:#1e293b;padding:28px;}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:20px;}}
-.hdr h1{{color:#1E3A8A;font-size:20px;font-weight:800;}} .hdr p{{color:#64748b;font-size:12px;margin:3px 0;}}
-.period{{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;color:#1E3A8A;}}
-table{{width:100%;border-collapse:collapse;margin-top:10px;}}
-th{{background:#1E3A8A;color:#fff;padding:10px 12px;text-align:center;font-size:13px;}}
-th:first-child{{text-align:right;}}
-td{{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;}}
-td.center{{text-align:center;font-weight:700;}}
-tr:nth-child(even){{background:#f8fafc;}} tr:hover{{background:#eff6ff;}}
-.g{{color:#16a34a;}} .r{{color:#dc2626;}} .y{{color:#d97706;}} .b{{color:#2563eb;}}
-.pct{{background:#dbeafe;color:#1E3A8A;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:800;}}
-.footer{{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;}}
-@media print{{body{{padding:10px;}}}}
-</style></head><body>
-<div class="hdr">
-  <div><h1>🏭 {FACTORY_NAME}</h1><p>{FACTORY_ADDRESS}</p><p>تقرير الحضور والغياب</p></div>
-  <div class="period">الفترة: {att_from} → {att_to}</div>
-</div>
-<table>
-<thead><tr>
-  <th>اسم العامل</th><th>حاضر</th><th>غياب بدون عذر</th><th>غياب بعذر</th><th>إجازة</th><th>مأمورية</th><th>إجمالي مسجل</th><th>نسبة الحضور</th>
-</tr></thead>
-<tbody>{rows_html}</tbody>
-</table>
-<div class="footer">
-  <span>🏭 {FACTORY_NAME} — {FACTORY_ADDRESS}</span>
-  <span>نظام ERP v7.0 | طُبع: {today_rpt}</span>
-</div>
-</body></html>"""
-                    # إضافة تفاصيل الغياب لكل عامل
-                    detail_html = ""
+                    # ── بناء تفاصيل الغياب لكل عامل ──
+                    detail_sections = ""
                     for _, r in att_rep.iterrows():
-                        if int(r.get('غياب_بدون_عذر',0)) + int(r.get('غياب_بعذر',0)) > 0:
+                        total_abs = int(r.get('غياب_بدون_عذر',0)) + int(r.get('غياب_بعذر',0))
+                        if total_abs > 0:
                             absences = run_query("""
-                                SELECT att_date, excuse_type FROM worker_attendance a
+                                SELECT a.att_date, COALESCE(NULLIF(a.excuse_type,''),'بدون عذر') as excuse_type
+                                FROM worker_attendance a
                                 JOIN workers w ON w.id=a.worker_id
                                 WHERE w.name=:n AND a.status='غائب'
                                 AND a.att_date BETWEEN :s AND :e
-                                ORDER BY att_date""",
+                                ORDER BY a.att_date""",
                                 {"n": r['name'], "s": str(att_from), "e": str(att_to)})
                             if not absences.empty:
-                                detail_html += f'<tr style="background:#fff3cd"><td colspan="8" style="padding:4px 12px;font-weight:700;color:#92400e;">📋 تفاصيل غياب {r["name"]}:</td></tr>'
-                                for _,ab in absences.iterrows():
-                                    exc = str(ab['excuse_type']) if ab['excuse_type'] else 'بدون عذر'
-                                    color = "#dc2626" if exc == "بدون عذر" else "#d97706"
-                                    detail_html += f'<tr><td></td><td class="center" colspan="2" style="color:{color};font-size:11px;">📅 {ab["att_date"]} — {exc}</td><td colspan="5"></td></tr>'
+                                abs_rows = ""
+                                for idx2, (_, ab) in enumerate(absences.iterrows()):
+                                    exc = str(ab['excuse_type'])
+                                    is_no_excuse = exc == 'بدون عذر'
+                                    row_bg2 = "#fff5f5" if is_no_excuse else "#fffbeb"
+                                    exc_color = "#dc2626" if is_no_excuse else "#d97706"
+                                    exc_icon = "🔴" if is_no_excuse else "🟡"
+                                    abs_rows += (
+                                        '<tr style="background:' + row_bg2 + ';">'
+                                        + '<td style="padding:8px 14px;border-bottom:1px solid #e2e8f0;text-align:center;font-family:monospace;color:#1e293b;font-weight:600;">' + str(ab['att_date']) + '</td>'
+                                        + '<td style="padding:8px 14px;border-bottom:1px solid #e2e8f0;text-align:center;color:' + exc_color + ';font-weight:700;">' + exc_icon + ' ' + exc + '</td>'
+                                        + '</tr>'
+                                    )
+                                detail_sections += (
+                                    '<div style="margin-bottom:24px;">'
+                                    + '<div style="background:#1E3A8A;color:white;padding:10px 16px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px;">'
+                                    + '👤 ' + str(r['name'])
+                                    + ' &nbsp;|&nbsp; غياب بدون عذر: <span style="color:#fca5a5;">' + str(int(r.get('غياب_بدون_عذر',0))) + '</span>'
+                                    + ' &nbsp;|&nbsp; غياب بعذر: <span style="color:#fde68a;">' + str(int(r.get('غياب_بعذر',0))) + '</span>'
+                                    + '</div>'
+                                    + '<table style="width:100%;border-collapse:collapse;">'
+                                    + '<thead><tr style="background:#e2e8f0;">'
+                                    + '<th style="padding:8px 14px;text-align:center;font-size:13px;color:#1e293b;">📅 تاريخ الغياب</th>'
+                                    + '<th style="padding:8px 14px;text-align:center;font-size:13px;color:#1e293b;">نوع الغياب</th>'
+                                    + '</tr></thead>'
+                                    + '<tbody>' + abs_rows + '</tbody>'
+                                    + '</table></div>'
+                                )
 
-                    att_html = att_html.replace('<div class="footer">', detail_html + '<div class="footer">')
+                    no_absence_note = '<p style="text-align:center;color:#16a34a;font-weight:700;padding:20px;">✅ لا توجد أيام غياب مسجلة في هذه الفترة</p>' if not detail_sections else ""
+
+                    att_html = (
+                        "<!DOCTYPE html>"
+                        + '<html dir="rtl" lang="ar"><head><meta charset="UTF-8">'
+                        + "<style>"
+                        + "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');"
+                        + "*{box-sizing:border-box;margin:0;padding:0;}"
+                        + "body{font-family:'Cairo',sans-serif;background:#f8fafc;color:#1e293b;padding:28px;}"
+                        + ".hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1E3A8A;padding-bottom:14px;margin-bottom:24px;}"
+                        + ".hdr h1{color:#1E3A8A;font-size:22px;font-weight:800;}"
+                        + ".hdr p{color:#64748b;font-size:12px;margin:3px 0;}"
+                        + ".period{background:#eff6ff;border:2px solid #bfdbfe;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;color:#1E3A8A;}"
+                        + ".section-title{font-size:16px;font-weight:800;color:#1E3A8A;margin:28px 0 12px;padding-bottom:6px;border-bottom:2px solid #bfdbfe;}"
+                        + "table{width:100%;border-collapse:collapse;margin-bottom:8px;background:white;border-radius:0 0 8px 8px;overflow:hidden;}"
+                        + "th{background:#1E3A8A;color:#fff;padding:10px 14px;text-align:center;font-size:13px;}"
+                        + "th:first-child{text-align:right;}"
+                        + "td{padding:9px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#1e293b;}"
+                        + "td.c{text-align:center;font-weight:700;}"
+                        + "tr:nth-child(even){background:#f8fafc;}"
+                        + ".g{color:#16a34a;} .r{color:#dc2626;} .y{color:#d97706;} .b{color:#2563eb;}"
+                        + ".pct{background:#dbeafe;color:#1E3A8A;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:800;}"
+                        + ".footer{margin-top:32px;border-top:1px solid #e2e8f0;padding-top:12px;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;}"
+                        + "@media print{body{padding:10px;background:white;} .section-title{margin-top:16px;}}"
+                        + "</style></head><body>"
+                        + '<div class="hdr">'
+                        + "<div><h1>🏭 " + str(FACTORY_NAME) + "</h1><p>" + str(FACTORY_ADDRESS) + "</p><p>تقرير الحضور والغياب</p></div>"
+                        + '<div class="period">📅 الفترة: ' + str(att_from) + " ← " + str(att_to) + "</div>"
+                        + "</div>"
+                        + '<div class="section-title">📊 ملخص الحضور والغياب</div>'
+                        + '<table><thead><tr>'
+                        + "<th>اسم العامل</th><th>حاضر</th><th>غياب بدون عذر</th><th>غياب بعذر</th><th>إجازة</th><th>مأمورية</th><th>إجمالي مسجل</th><th>نسبة الحضور</th>"
+                        + "</tr></thead><tbody>" + rows_html + "</tbody></table>"
+                        + '<div class="section-title">📋 تفاصيل أيام الغياب لكل عامل</div>'
+                        + detail_sections + no_absence_note
+                        + '<div class="footer">'
+                        + "<span>🏭 " + str(FACTORY_NAME) + " — " + str(FACTORY_ADDRESS) + "</span>"
+                        + "<span>نظام ERP v7.0 | طُبع: " + str(today_rpt) + "</span>"
+                        + "</div></body></html>"
+                    )
                     st.download_button("⬇️ تنزيل تقرير الحضور HTML",
                         att_html.encode('utf-8'),
                         f"Attendance_{att_from}_{att_to}.html",
