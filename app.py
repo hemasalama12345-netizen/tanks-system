@@ -1225,7 +1225,7 @@ if menu == "📊 لوحة التحكم":
                 price_str = "{:,.0f} ر".format(float(price_val))
             except Exception:
                 price_str = price_val
-            td = "padding:9px 14px;border-bottom:1px solid #e2e8f0;"
+            td = "padding:9px 14px;border-bottom:1px solid #e2e8f0;color:#1a1a1a;"
             rows_html += (
                 '<tr style="background:' + row_bg + ';">'
                 + '<td style="' + td + 'font-weight:700;color:#1E3A8A;white-space:nowrap;">' + gcol(r,"الطلبية") + '</td>'
